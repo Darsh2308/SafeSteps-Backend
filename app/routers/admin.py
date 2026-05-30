@@ -5,7 +5,7 @@ from app.utils.logger import Logger
 router = APIRouter(tags=["Admin & Monitoring"])
 
 
-@router.get("/health")
+@router.api_route("/health", methods=["GET", "HEAD"])
 async def get_health():
     from app.database import get_motor_client
     try:
