@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SafeSteps Backend — E2E Test Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0f14; --card: #161b22; --border: #30363d;
+    --accent: #238636; --accent-hover: #2ea043;
+    --danger: #da3633; --warn: #d29922; --info: #1f6feb;
+    --text: #c9d1d9; --muted: #8b949e; --white: #f0f6fc;
+    --low: #238636; --medium: #d29922; --high: #da3633; --critical: #ff4444;
+  }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; }
+  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 12px; }
+  header h1 { color: var(--white); font-size: 18px; }
+  header .badge { background: var(--accent); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 12px; }
+  #status-bar { background: #111418; border-bottom: 1px solid var(--border); padding: 6px 24px; font-size: 12px; color: var(--muted); display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+  #status-bar span { display: flex; align-items: center; gap: 6px; }
+  #status-bar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); flex-shrink: 0; }
+  #status-bar .dot.on { background: var(--accent); }
+
+  .nav { display: flex; gap: 4px; padding: 12px 24px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .tab-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all .15s; }
+  .tab-btn:hover { background: var(--card); color: var(--white); }
+  .tab-btn.active { background: var(--info); border-color: var(--info); color: #fff; }
+
+  .main { padding: 20px 24px; display: flex; gap: 20px; }
+  .panel { flex: 1 1 0; min-width: 0; }
+  .log-panel { width: 340px; flex-shrink: 0; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { color: var(--white); font-size: 14px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .card h2 .step { background: var(--info); color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600; }
+  .card h2 .done { background: var(--accent); color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 10px; }
+
+  label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; margin-top: 10px; }
+  label:first-child { margin-top: 0; }
+  input, select, textarea {
+    width: 100%; background: #0d0f14; border: 1px solid var(--border); color: var(--text);
+    padding: 7px 10px; border-radius: 6px; font-size: 13px; outline: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--info); }
+  textarea { min-height: 70px; resize: vertical; }
+
+  button {
+    background: var(--accent); color: #fff; border: none; padding: 8px 18px;
+    border-radius: 6px; cursor: pointer; font-size: 13px; margin-top: 12px; transition: background .15s;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.danger { background: var(--danger); }
+  button.danger:hover { background: #f85149; }
+  button.info { background: var(--info); }
+  button.info:hover { background: #388bfd; }
+  button.warn { background: var(--warn); color: #000; }
+  button.warn:hover { background: #e3b341; }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  button.ghost:hover { background: var(--card); color: var(--white); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .result-box {
+    background: #0d0f14; border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px; margin-top: 12px; font-size: 12px; color: var(--text);
+    white-space: pre-wrap; max-height: 280px; overflow-y: auto; font-family: monospace;
+  }
+
+  .hint { color: var(--muted); font-size: 11px; margin-top: 6px; line-height: 1.5; }
+
+  .threat-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;
+  }
+  .threat-LOW    { background: #1a3a1a; color: #3fb950; }
+  .threat-MEDIUM { background: #3a2c0a; color: #f0a030; }
+  .threat-HIGH   { background: #3a0a0a; color: #f85149; }
+  .threat-CRITICAL { background: #5c0808; color: #ff6b6b; }
+
+  /* Log panel */
+  .log-panel .card { height: calc(100vh - 170px); display: flex; flex-direction: column; }
+  .log-panel h2 { flex-shrink: 0; }
+  #log { flex: 1; overflow-y: auto; font-family: monospace; font-size: 11px; }
+  .log-entry { padding: 3px 0; border-bottom: 1px solid #1c2128; }
+  .log-entry .ts { color: var(--muted); }
+  .log-entry.ok   .msg { color: #3fb950; }
+  .log-entry.err  .msg { color: #f85149; }
+  .log-entry.info .msg { color: #79c0ff; }
+  .log-entry.warn .msg { color: #f0a030; }
+
+  /* Audio viz */
+  #audio-canvas { width: 100%; height: 60px; background: #0d0f14; border-radius: 6px; display: block; margin-top: 8px; }
+  #ws-status { font-size: 12px; padding: 4px 10px; border-radius: 4px; display: inline-block; margin-top: 8px; }
+  #ws-status.connected    { background: #1a3a1a; color: #3fb950; }
+  #ws-status.disconnected { background: #2a1a1a; color: #f85149; }
+
+  /* Transcript stream */
+  #transcript-stream { max-height: 220px; overflow-y: auto; }
+  .transcript-line { padding: 6px 0; border-bottom: 1px solid #1c2128; font-size: 12px; }
+  .transcript-line .speaker { color: var(--info); font-weight: 600; margin-right: 6px; }
+  .transcript-line .threat-tag { float: right; }
+  .transcript-line .ai-resp { color: #d2a8ff; font-style: italic; margin-top: 4px; font-size: 11px; }
+
+  /* TTS */
+  #tts-player { width: 100%; margin-top: 12px; }
+  .tts-presets .btn-row { margin-top: 0; }
+  .tts-presets button { margin-top: 6px; font-size: 12px; padding: 6px 12px; }
+
+  /* Analytics grid */
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat-card { background: #0d0f14; border: 1px solid var(--border); border-radius: 6px; padding: 12px; text-align: center; }
+  .stat-card .val { font-size: 28px; font-weight: 700; color: var(--white); }
+  .stat-card .lbl { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #0d0f14; }
+  ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div><h1>SafeSteps Backend</h1></div>
+  <span class="badge">E2E Test Dashboard</span>
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <label style="margin:0;color:var(--muted);font-size:12px">API URL</label>
+    <input id="base-url" value="http://localhost:8000" style="width:220px;margin:0" />
+    <button style="margin:0;padding:5px 12px;font-size:12px" onclick="pingServer()">Ping</button>
+  </div>
+</header>
+
+<div id="status-bar">
+  <span><div class="dot" id="server-dot"></div><span id="server-status">Server: unknown</span></span>
+  <span>Token: <code id="token-display" style="color:#79c0ff">not set</code></span>
+  <span>User: <code id="user-display" style="color:#d2a8ff">—</code></span>
+  <span>Session: <code id="session-display" style="color:#d2a8ff">none</code></span>
+  <span>Threat: <span id="threat-display" class="threat-badge threat-LOW">LOW</span></span>
+  <button class="ghost" style="margin:0;padding:3px 10px;font-size:11px" onclick="clearState()">Clear State</button>
+</div>
+
+<div class="nav">
+  <button class="tab-btn active" onclick="showTab('auth',this)">1. Auth</button>
+  <button class="tab-btn" onclick="showTab('setup',this)">2. Setup</button>
+  <button class="tab-btn" onclick="showTab('emergency',this)">3. Emergency</button>
+  <button class="tab-btn" onclick="showTab('location',this)">4. Location</button>
+  <button class="tab-btn" onclick="showTab('audio',this)">5. Audio WS</button>
+  <button class="tab-btn" onclick="showTab('conversation',this)">6. AI Chat</button>
+  <button class="tab-btn" onclick="showTab('tts',this)">7. TTS</button>
+  <button class="tab-btn" onclick="showTab('reports',this)">8. Reports</button>
+</div>
+
+<div class="main">
+<div class="panel">
+
+<!-- ══════════════════════════════════════════════════ TAB 1: AUTH -->
+<div id="tab-auth" class="tab-content active">
+
+  <div class="card">
+    <h2><span class="step">STEP 1a</span> Register New User</h2>
+    <div class="two-col">
+      <div>
+        <label>Phone Number *</label>
+        <input id="reg-phone" value="+919999999999" />
+        <label>Full Name *</label>
+        <input id="reg-name" value="Test User" />
+        <label>Age</label>
+        <input id="reg-age" value="25" />
+        <label>Gender</label>
+        <select id="reg-gender">
+          <option>Male</option><option>Female</option><option>Other</option>
+        </select>
+      </div>
+      <div>
+        <label>Blood Group</label>
+        <select id="reg-blood">
+          <option>O+</option><option>O-</option><option>A+</option><option>A-</option>
+          <option>B+</option><option>B-</option><option>AB+</option><option>AB-</option>
+        </select>
+        <label>Preferred Language</label>
+        <select id="reg-lang">
+          <option>English</option><option>Hindi</option><option>Marathi</option>
+        </select>
+        <label>Medical Notes</label>
+        <input id="reg-medical" placeholder="e.g. Diabetic, Asthmatic" />
+      </div>
+    </div>
+    <button onclick="register()">POST /auth/register</button>
+    <p class="hint">Creates a new user. Returns JWT token + profile. Phone must be unique.</p>
+    <div class="result-box" id="register-result">—</div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">STEP 1b</span> Login (returning user)</h2>
+    <label>Phone Number</label>
+    <input id="login-phone" value="+919999999999" />
+    <button onclick="login()">POST /auth/login</button>
+    <p class="hint">Phone number only — no password, no OTP. Returns JWT token + profile.</p>
+    <div class="result-box" id="login-result">—</div>
+  </div>
+
+  <div class="card">
+    <h2>Current User</h2>
+    <button onclick="getMe()">GET /auth/me</button>
+    <button class="danger" style="margin-left:8px" onclick="doLogout()">POST /auth/logout</button>
+    <div class="result-box" id="me-result">—</div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════ TAB 2: SETUP -->
+<div id="tab-setup" class="tab-content">
+
+  <div class="card">
+    <h2><span class="step">STEP 2a</span> Add Emergency Contacts (up to 3)</h2>
+    <div class="two-col">
+      <div>
+        <label>Full Name</label>
+        <input id="c-name" value="Mom" />
+        <label>Relationship</label>
+        <input id="c-rel" value="Mother" />
+      </div>
+      <div>
+        <label>Phone Number</label>
+        <input id="c-phone" value="+919888888888" />
+        <label>Priority</label>
+        <select id="c-priority">
+          <option value="Primary">Primary (SMS + Call)</option>
+          <option value="Secondary">Secondary (SMS only)</option>
+          <option value="Tertiary">Tertiary (SMS only)</option>
+        </select>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button onclick="addContact()">Add Contact</button>
+      <button class="info" onclick="getContacts()">List Contacts</button>
+    </div>
+    <p class="hint">Add contacts in order of priority. Primary contact gets called + SMS'd. Others receive SMS only.</p>
+    <div class="result-box" id="contacts-result">—</div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">STEP 2b</span> Device Permissions Sync</h2>
+    <div class="two-col">
+      <div>
+        <label>Location</label>
+        <select id="p-location"><option value="granted">granted</option><option value="denied">denied</option></select>
+        <label>Microphone</label>
+        <select id="p-mic"><option value="granted">granted</option><option value="denied">denied</option></select>
+      </div>
+      <div>
+        <label>SMS</label>
+        <select id="p-sms"><option value="granted">granted</option><option value="denied">denied</option></select>
+        <label>Calls</label>
+        <select id="p-calls"><option value="granted">granted</option><option value="denied">denied</option></select>
+      </div>
+    </div>
+    <button onclick="syncPermissions()">POST /permissions/sync</button>
+    <div class="result-box" id="permissions-result">—</div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════ TAB 3: EMERGENCY -->
+<div id="tab-emergency" class="tab-content">
+
+  <div class="card">
+    <h2><span class="step">STEP 3</span> SOS Session Control</h2>
+    <div class="btn-row">
+      <button onclick="startSession()">▶ Start SOS Session</button>
+      <button class="danger" onclick="endSession()">■ End Session + Generate Report</button>
+    </div>
+    <p class="hint">
+      Start → triggers session creation.<br>
+      End → auto-generates AI report + sends "User is safe" SMS to all contacts.
+    </p>
+    <div class="result-box" id="emergency-result">—</div>
+  </div>
+
+  <div class="card">
+    <h2>Session History</h2>
+    <button class="info" onclick="getHistory()">GET /emergency/history</button>
+    <div class="result-box" id="history-result">—</div>
+  </div>
+
+  <div class="card">
+    <h2>Log Call Status</h2>
+    <label>State</label>
+    <select id="call-status">
+      <option value="Initiated">Initiated</option>
+      <option value="Ringing">Ringing</option>
+      <option value="Answered">Answered</option>
+      <option value="Ended">Ended</option>
+      <option value="Failed">Failed</option>
+    </select>
+    <button onclick="logCall()">POST /call/status</button>
+    <p class="hint">Logs call state against the active session. After 3 Failed attempts → AI assistant activates (v2).</p>
+    <div class="result-box" id="call-result">—</div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════ TAB 4: LOCATION -->
+<div id="tab-location" class="tab-content">
+
+  <div class="card">
+    <h2><span class="step">STEP 4</span> GPS Location Update</h2>
+    <div class="two-col">
+      <div>
+        <label>Latitude</label><input id="loc-lat" value="19.0760" />
+        <label>Longitude</label><input id="loc-lng" value="72.8777" />
+        <label>Accuracy (m)</label><input id="loc-acc" value="5.0" />
+      </div>
+      <div>
+        <label>Speed (m/s)</label><input id="loc-speed" value="0.0" />
+        <label>Heading (°)</label><input id="loc-heading" value="0.0" />
+      </div>
+    </div>
+    <div class="btn-row">
+      <button onclick="updateLocation()">POST /location/update</button>
+      <button class="info" onclick="getMyLocation()">Use My GPS</button>
+    </div>
+    <p class="hint">
+      <strong>First update</strong> triggers SOS SMS to all contacts with Google Maps link.<br>
+      Subsequent updates track movement.
+    </p>
+    <div class="result-box" id="location-result">—</div>
+  </div>
+
+  <div class="card">
+    <h2>High-Speed Test — MEDIUM Threat Trigger</h2>
+    <p class="hint">Speed &gt; 80 km/h (22.2 m/s) escalates threat level via Threat Fusion Engine.</p>
+    <button class="warn" onclick="sendHighSpeedLocation()">Send 90 km/h Location (25 m/s)</button>
+    <div class="result-box" id="highspeed-result">—</div>
+  </div>
+
+  <div class="card">
+    <h2>Preset Locations</h2>
+    <div class="btn-row">
+      <button class="ghost" onclick="setLocation(19.0760,72.8777)">Mumbai</button>
+      <button class="ghost" onclick="setLocation(18.5204,73.8567)">Pune</button>
+      <button class="ghost" onclick="setLocation(28.6139,77.2090)">Delhi</button>
+      <button class="ghost" onclick="setLocation(12.9716,77.5946)">Bengaluru</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════ TAB 5: AUDIO WS -->
+<div id="tab-audio" class="tab-content">
+
+  <div class="card">
+    <h2><span class="step">STEP 5</span> WebSocket Audio Streaming</h2>
+    <p class="hint" style="margin-bottom:8px">
+      Streams raw PCM 16kHz mono audio to <code>/ws/audio/{session_id}</code>.<br>
+      Requires an active SOS session (start one in Tab 3 first).
+    </p>
+    <div class="btn-row">
+      <button class="info" id="ws-connect-btn" onclick="connectWS()">Connect WebSocket</button>
+      <button class="danger" id="ws-disconnect-btn" onclick="disconnectWS()" disabled>Disconnect</button>
+    </div>
+    <div id="ws-status" class="disconnected">Disconnected</div>
+    <canvas id="audio-canvas"></canvas>
+    <div class="btn-row" style="margin-top:8px">
+      <button id="mic-start-btn" onclick="startMic()" disabled>🎙 Start Recording</button>
+      <button id="mic-stop-btn" class="danger" onclick="stopMic()" disabled>⏹ Stop Recording</button>
+    </div>
+    <p class="hint">Browser Float32 audio → Int16 PCM before sending. Backend: VAD → STT → Threat Engine → response pushed back.</p>
+  </div>
+
+  <div class="card">
+    <h2>Live Transcript &amp; Threat Updates</h2>
+    <div id="transcript-stream"><p class="hint">Waiting for audio data…</p></div>
+  </div>
+
+  <div class="card">
+    <h2>Raw WebSocket Messages</h2>
+    <div class="result-box" id="ws-result" style="max-height:160px">—</div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════ TAB 6: AI CHAT -->
+<div id="tab-conversation" class="tab-content">
+
+  <div class="card">
+    <h2><span class="step">STEP 6</span> AI Safety Guidance Chat</h2>
+    <label>Your Message</label>
+    <textarea id="conv-message">Someone has been following me for the last 5 minutes. I'm alone on a dark street.</textarea>
+    <label>Language</label>
+    <select id="conv-lang">
+      <option value="en-IN">English (en-IN)</option>
+      <option value="hi-IN">Hindi (hi-IN)</option>
+      <option value="mr-IN">Marathi (mr-IN)</option>
+    </select>
+    <button onclick="sendMessage()">Send to AI (Groq Llama 3.1 8B)</button>
+    <p class="hint">Uses Groq as primary, Gemini 2.0 Flash as fallback. History-aware (last 10 exchanges).</p>
+    <div class="result-box" id="conv-result">—</div>
+  </div>
+
+  <div class="card">
+    <h2>Test Scenarios</h2>
+    <div class="btn-row" style="flex-wrap:wrap">
+      <button class="warn" onclick="setMessage('Someone is following me, I think I am in danger')">Stalking</button>
+      <button class="warn" onclick="setMessage('I was just in a car accident, my car is smoking')">Car Accident</button>
+      <button class="warn" onclick="setMessage('Help me, someone is trying to grab me')">Assault</button>
+      <button class="warn" onclick="setMessage('I hear screaming nearby, there might be a fight')">Fight Nearby</button>
+      <button class="info" onclick="setMessage('Mujhe koi follow kar raha hai, dar lag raha hai')">Hindi — Stalking</button>
+      <button class="info" onclick="setMessage('Mala madat havi aahe, mala bhiti vatate')">Marathi — Help</button>
+      <button class="ghost" onclick="setMessage('I am safe now, you can stop monitoring')">All Clear</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Conversation History</h2>
+    <button class="info" onclick="getConversation()">GET /conversation/{session_id}</button>
+    <div class="result-box" id="conv-history-result">—</div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════ TAB 7: TTS -->
+<div id="tab-tts" class="tab-content">
+
+  <div class="card">
+    <h2><span class="step">STEP 7</span> Sarvam TTS — Text to Speech</h2>
+    <label>Text to Speak</label>
+    <textarea id="tts-text">Stay calm. Move towards a well-lit area. Help is on the way.</textarea>
+    <label>Language</label>
+    <select id="tts-lang">
+      <option value="en-IN">English (en-IN)</option>
+      <option value="hi-IN">Hindi (hi-IN)</option>
+      <option value="mr-IN">Marathi (mr-IN)</option>
+    </select>
+    <button onclick="synthesizeTTS()">POST /tts/synthesize → Play Audio</button>
+    <p class="hint">Returns WAV bytes from Sarvam bulbul:v1. Requires SARVAM_API_KEY in .env.</p>
+    <audio id="tts-player" controls style="display:none"></audio>
+    <div class="result-box" id="tts-result">—</div>
+  </div>
+
+  <div class="card tts-presets">
+    <h2>AI Emergency Guidance Presets</h2>
+    <div class="btn-row" style="flex-wrap:wrap">
+      <button class="ghost" onclick="setTTS('Are you safe? Please respond if you can hear me.','en-IN')">en: Are you safe?</button>
+      <button class="ghost" onclick="setTTS('Help is on the way. Stay where you are.','en-IN')">en: Help is coming</button>
+      <button class="ghost" onclick="setTTS('Kya aap surakshit hain? Jawab dijiye.','hi-IN')">hi: Are you safe?</button>
+      <button class="ghost" onclick="setTTS('Madad yete aahe. Thamba.','mr-IN')">mr: Help coming</button>
+      <button class="ghost" onclick="setTTS('SOS activated. Contacting emergency services.','en-IN')">en: SOS Activated</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════ TAB 8: REPORTS -->
+<div id="tab-reports" class="tab-content">
+
+  <div class="card">
+    <h2>Emergency Report</h2>
+    <label>Session ID (blank = current session)</label>
+    <input id="report-session-id" placeholder="auto-filled from active session" />
+    <button class="info" onclick="getReport()">GET /reports/{session_id}</button>
+    <p class="hint">Report is auto-generated when you end the session. No manual trigger needed.</p>
+    <div class="result-box" id="report-result">—</div>
+  </div>
+
+  <div class="card">
+    <h2>Event Timeline</h2>
+    <button class="info" onclick="getTimeline()">GET /timeline/{session_id}</button>
+    <div class="result-box" id="timeline-result">—</div>
+  </div>
+
+  <div class="card">
+    <h2>Audio Transcripts</h2>
+    <button class="info" onclick="getTranscripts()">GET /transcripts/{session_id}</button>
+    <div class="result-box" id="transcripts-result">—</div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="card">
+    <h2>Analytics Dashboard</h2>
+    <button onclick="getAnalytics()">GET /analytics</button>
+    <div class="stats-grid" id="analytics-grid" style="margin-top:12px"></div>
+    <div class="result-box" id="analytics-result" style="margin-top:12px">—</div>
+  </div>
+
+</div>
+
+</div><!-- /panel -->
+
+<!-- ══════════════════════════════════════════════════ LOG PANEL -->
+<div class="log-panel">
+  <div class="card">
+    <h2 style="display:flex;justify-content:space-between">
+      Activity Log
+      <button class="ghost" style="margin:0;padding:2px 8px;font-size:11px" onclick="clearLog()">Clear</button>
+    </h2>
+    <div id="log"></div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+let token     = localStorage.getItem('ss_token')   || '';
+let sessionId = localStorage.getItem('ss_session') || '';
+let ws = null, audioCtx = null, mediaStream = null;
+let scriptProcessor = null, animFrame = null, analyser = null;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const baseUrl = () => document.getElementById('base-url').value.replace(/\/$/, '');
+
+function log(msg, type = 'info') {
+  const div = document.getElementById('log');
+  const entry = document.createElement('div');
+  entry.className = `log-entry ${type}`;
+  const ts = new Date().toLocaleTimeString();
+  entry.innerHTML = `<span class="ts">[${ts}]</span> <span class="msg">${escHtml(msg)}</span>`;
+  div.prepend(entry);
+}
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function setResult(id, data, isErr = false) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  el.style.color = isErr ? '#f85149' : '#c9d1d9';
+}
+
+function setToken(t, name) {
+  token = t;
+  localStorage.setItem('ss_token', t);
+  document.getElementById('token-display').textContent = t ? t.slice(0, 22) + '…' : 'not set';
+  if (name) document.getElementById('user-display').textContent = name;
+}
+
+function setSession(id) {
+  sessionId = id;
+  localStorage.setItem('ss_session', id);
+  document.getElementById('session-display').textContent = id ? id.slice(0, 10) + '…' : 'none';
+  if (id) {
+    document.getElementById('report-session-id').placeholder = id;
+  }
+}
+
+function setThreat(level) {
+  const el = document.getElementById('threat-display');
+  el.className = `threat-badge threat-${level}`;
+  el.textContent = level;
+}
+
+function clearState() {
+  localStorage.removeItem('ss_token');
+  localStorage.removeItem('ss_session');
+  token = ''; sessionId = '';
+  document.getElementById('token-display').textContent = 'not set';
+  document.getElementById('user-display').textContent = '—';
+  document.getElementById('session-display').textContent = 'none';
+  setThreat('LOW');
+  log('State cleared', 'warn');
+}
+
+// ─── API Helpers ─────────────────────────────────────────────────────────────
+async function api(method, path, body, resultId) {
+  const url = baseUrl() + path;
+  log(`${method} ${path}`, 'info');
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+  };
+  if (body) opts.body = JSON.stringify(body);
+  try {
+    const r = await fetch(url, opts);
+    const data = await r.json().catch(() => ({ detail: 'Non-JSON response' }));
+    if (!r.ok) {
+      log(`${r.status} ${path}: ${JSON.stringify(data.detail || data)}`, 'err');
+      if (resultId) setResult(resultId, data, true);
+      return null;
+    }
+    log(`${r.status} OK ${path}`, 'ok');
+    if (resultId) setResult(resultId, data);
+    return data;
+  } catch (e) {
+    log(`Network error: ${e.message}`, 'err');
+    if (resultId) setResult(resultId, `Network error: ${e.message}`, true);
+    return null;
+  }
+}
+
+async function apiAudio(path, body) {
+  const url = baseUrl() + path;
+  log(`POST ${path} (audio bytes)`, 'info');
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body)
+    });
+    if (r.status === 204) {
+      log('TTS: 204 — no content (empty text or TTS key not set)', 'warn');
+      setResult('tts-result', '204 No Content — check SARVAM_API_KEY in .env', true);
+      return null;
+    }
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      log(`TTS error ${r.status}: ${JSON.stringify(err)}`, 'err');
+      setResult('tts-result', JSON.stringify(err, null, 2), true);
+      return null;
+    }
+    const blob = await r.blob();
+    log(`TTS: received ${(blob.size / 1024).toFixed(1)} KB WAV audio`, 'ok');
+    setResult('tts-result', `✓ Audio received: ${(blob.size / 1024).toFixed(1)} KB  |  type: ${blob.type}`);
+    return blob;
+  } catch (e) {
+    log(`TTS network error: ${e.message}`, 'err');
+    setResult('tts-result', `Network error: ${e.message}`, true);
+    return null;
+  }
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+function showTab(name, el) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (el) el.classList.add('active');
+}
+
+// ─── Server Ping ──────────────────────────────────────────────────────────────
+async function pingServer() {
+  const dot = document.getElementById('server-dot');
+  const label = document.getElementById('server-status');
+  try {
+    const r = await fetch(baseUrl() + '/');
+    if (r.ok) { dot.classList.add('on'); label.textContent = 'Server: online'; log('Server online', 'ok'); }
+    else { dot.classList.remove('on'); label.textContent = 'Server: error ' + r.status; }
+  } catch {
+    dot.classList.remove('on');
+    label.textContent = 'Server: offline';
+    log('Server offline — run: venv/bin/uvicorn app.main:app --port 8000', 'err');
+  }
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+async function register() {
+  const data = await api('POST', '/auth/register', {
+    phone:              document.getElementById('reg-phone').value,
+    full_name:          document.getElementById('reg-name').value,
+    age:                document.getElementById('reg-age').value,
+    gender:             document.getElementById('reg-gender').value,
+    blood_group:        document.getElementById('reg-blood').value,
+    preferred_language: document.getElementById('reg-lang').value,
+    medical_notes:      document.getElementById('reg-medical').value
+  }, 'register-result');
+
+  if (data?.token) {
+    setToken(data.token, data.user?.fullName || data.user?.full_name);
+    // mirror phone to login tab
+    document.getElementById('login-phone').value = document.getElementById('reg-phone').value;
+    log(`Registered: ${data.user?.fullName || ''}  — token stored`, 'ok');
+  }
+}
+
+async function login() {
+  const data = await api('POST', '/auth/login', {
+    phone: document.getElementById('login-phone').value
+  }, 'login-result');
+
+  if (data?.token) {
+    setToken(data.token, data.user?.fullName || data.user?.full_name);
+    log(`Logged in: ${data.user?.fullName || ''}  — token stored`, 'ok');
+  }
+}
+
+async function getMe() { await api('GET', '/auth/me', null, 'me-result'); }
+
+async function doLogout() {
+  await api('POST', '/auth/logout', null, 'me-result');
+  clearState();
+}
+
+// ─── Setup ────────────────────────────────────────────────────────────────────
+async function addContact() {
+  const data = await api('POST', '/contacts', {
+    name:         document.getElementById('c-name').value,
+    relationship: document.getElementById('c-rel').value,
+    phoneNumber:  document.getElementById('c-phone').value,
+    priority:     document.getElementById('c-priority').value
+  }, 'contacts-result');
+  if (data) log(`Contact added: ${document.getElementById('c-name').value}`, 'ok');
+}
+
+async function getContacts() { await api('GET', '/contacts', null, 'contacts-result'); }
+
+async function syncPermissions() {
+  const g = (id) => document.getElementById(id).value === 'granted';
+  await api('POST', '/permissions/sync', {
+    permissions: [
+      { name: "Location Access",      description: "GPS coordinates during emergency.", type: "location",      status: g('p-location') },
+      { name: "Microphone Usage",     description: "Background audio and transcription.", type: "microphone",  status: g('p-mic') },
+      { name: "Send SMS",             description: "Alert texts to contacts.",           type: "sms",          status: g('p-sms') },
+      { name: "Phone Calls",          description: "Dial primary contacts.",             type: "phone",        status: g('p-calls') },
+      { name: "Access Contacts",      description: "Import contacts from device.",       type: "contacts",     status: true },
+      { name: "Notifications",        description: "Critical alert statuses.",           type: "notifications",status: true },
+      { name: "Accessibility Service",description: "Hardware trigger intercepts.",       type: "accessibility",status: false }
+    ]
+  }, 'permissions-result');
+}
+
+// ─── Emergency ────────────────────────────────────────────────────────────────
+async function startSession() {
+  const data = await api('POST', '/emergency/start', null, 'emergency-result');
+  if (data?.session_id) {
+    setSession(data.session_id);
+    log(`SOS session started: ${data.session_id}`, 'ok');
+  }
+}
+
+async function endSession() {
+  const data = await api('POST', '/emergency/end', null, 'emergency-result');
+  if (data) log('Session ended — AI report generated + safe SMS sent', 'ok');
+}
+
+async function getHistory() { await api('GET', '/emergency/history', null, 'history-result'); }
+
+async function logCall() {
+  await api('POST', '/call/status', {
+    state: document.getElementById('call-status').value
+  }, 'call-result');
+}
+
+// ─── Location ─────────────────────────────────────────────────────────────────
+async function updateLocation() {
+  if (!sessionId) { log('No active session — start SOS first', 'err'); return; }
+  const data = await api('POST', '/location/update', {
+    session_id: sessionId,
+    latitude:   parseFloat(document.getElementById('loc-lat').value),
+    longitude:  parseFloat(document.getElementById('loc-lng').value),
+    accuracy:   parseFloat(document.getElementById('loc-acc').value),
+    speed:      parseFloat(document.getElementById('loc-speed').value),
+    heading:    parseFloat(document.getElementById('loc-heading').value)
+  }, 'location-result');
+  if (data?.maps_link) log(`Maps link: ${data.maps_link}`, 'ok');
+}
+
+function getMyLocation() {
+  if (!navigator.geolocation) { log('Geolocation not supported in this browser', 'err'); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    document.getElementById('loc-lat').value = pos.coords.latitude.toFixed(6);
+    document.getElementById('loc-lng').value = pos.coords.longitude.toFixed(6);
+    document.getElementById('loc-acc').value = (pos.coords.accuracy || 5).toFixed(1);
+    document.getElementById('loc-speed').value = (pos.coords.speed || 0).toFixed(1);
+    log(`GPS: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`, 'ok');
+  }, e => log(`GPS error: ${e.message}`, 'err'));
+}
+
+function setLocation(lat, lng) {
+  document.getElementById('loc-lat').value = lat;
+  document.getElementById('loc-lng').value = lng;
+  log(`Location preset: ${lat}, ${lng}`, 'info');
+}
+
+async function sendHighSpeedLocation() {
+  if (!sessionId) { log('No active session', 'err'); return; }
+  await api('POST', '/location/update', {
+    session_id: sessionId,
+    latitude: 19.0760, longitude: 72.8777, accuracy: 5.0, speed: 25.0, heading: 45.0
+  }, 'highspeed-result');
+}
+
+// ─── WebSocket Audio ──────────────────────────────────────────────────────────
+function connectWS() {
+  if (!sessionId) { log('No active session — start SOS first (Tab 3)', 'err'); return; }
+  const wsUrl = baseUrl().replace(/^http/, 'ws') + `/ws/audio/${sessionId}`;
+  log(`Connecting: ${wsUrl}`, 'info');
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    log('WebSocket connected', 'ok');
+    document.getElementById('ws-status').className = 'connected';
+    document.getElementById('ws-status').textContent = '● Connected';
+    document.getElementById('ws-connect-btn').disabled = true;
+    document.getElementById('ws-disconnect-btn').disabled = false;
+    document.getElementById('mic-start-btn').disabled = false;
+  };
+
+  ws.onmessage = (evt) => {
+    try {
+      const msg = JSON.parse(evt.data);
+      setResult('ws-result', msg);
+      if (msg.threat_level) setThreat(msg.threat_level);
+      if (msg.transcript !== undefined || msg.threat_level || msg.ai_response) {
+        addTranscriptLine(msg);
+      }
+      log(`WS ← threat:${msg.threat_level || '?'}  transcript:"${(msg.transcript || '').slice(0,40)}"`, 'ok');
+    } catch {
+      setResult('ws-result', evt.data);
+    }
+  };
+
+  ws.onclose = (e) => {
+    log(`WebSocket closed (code ${e.code})`, 'warn');
+    document.getElementById('ws-status').className = 'disconnected';
+    document.getElementById('ws-status').textContent = 'Disconnected';
+    document.getElementById('ws-connect-btn').disabled = false;
+    document.getElementById('ws-disconnect-btn').disabled = true;
+    document.getElementById('mic-start-btn').disabled = true;
+    stopMic();
+  };
+
+  ws.onerror = () => log('WebSocket error — is the server running?', 'err');
+}
+
+function disconnectWS() {
+  if (ws) { ws.close(); ws = null; }
+  stopMic();
+}
+
+function addTranscriptLine(msg) {
+  const box = document.getElementById('transcript-stream');
+  const placeholder = box.querySelector('p');
+  if (placeholder) placeholder.remove();
+
+  const line = document.createElement('div');
+  line.className = 'transcript-line';
+  const level = msg.threat_level || 'LOW';
+  const incident = msg.incident_type && msg.incident_type !== 'None' ? msg.incident_type : '';
+  const events = (msg.events || []).join(', ');
+  const safeTag = msg.is_safe ? '<span style="background:#1a3a1a;color:#3fb950;padding:2px 8px;border-radius:10px;font-size:11px;margin-left:6px">✓ SAFE</span>' : '';
+
+  line.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <span class="speaker">User</span>
+      <span>${escHtml(msg.transcript || '(audio event)')}</span>
+      <span class="threat-tag threat-badge threat-${level}" style="margin-left:auto">${level}</span>
+      ${safeTag}
+    </div>
+    ${incident ? `<div style="font-size:11px;color:#79c0ff;margin-top:3px">📋 ${escHtml(incident)}${events ? ' · ' + escHtml(events) : ''}</div>` : (events ? `<div style="font-size:11px;color:#f0a030;margin-top:3px">⚡ ${escHtml(events)}</div>` : '')}
+    ${msg.reasons ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escHtml(msg.reasons)}</div>` : ''}
+  `;
+  box.prepend(line);
+}
+
+async function startMic() {
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+    });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    const source = audioCtx.createMediaStreamSource(mediaStream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    scriptProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+    source.connect(analyser);
+    analyser.connect(scriptProcessor);
+    scriptProcessor.connect(audioCtx.destination);
+
+    scriptProcessor.onaudioprocess = (e) => {
+      const f32 = e.inputBuffer.getChannelData(0);
+      const i16 = float32ToInt16(f32);
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(i16.buffer);
+    };
+
+    drawWaveform();
+    document.getElementById('mic-start-btn').disabled = true;
+    document.getElementById('mic-stop-btn').disabled = false;
+    log('Microphone recording started — speak now', 'ok');
+  } catch (e) {
+    log(`Mic error: ${e.message}`, 'err');
+  }
+}
+
+function stopMic() {
+  if (scriptProcessor)  { scriptProcessor.disconnect(); scriptProcessor = null; }
+  if (analyser)         { analyser.disconnect(); analyser = null; }
+  if (mediaStream)      { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  if (audioCtx)        { audioCtx.close(); audioCtx = null; }
+  if (animFrame)        { cancelAnimationFrame(animFrame); animFrame = null; }
+  const canvas = document.getElementById('audio-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#0d0f14';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  document.getElementById('mic-start-btn').disabled  = !(ws && ws.readyState === WebSocket.OPEN);
+  document.getElementById('mic-stop-btn').disabled  = true;
+  log('Microphone stopped', 'warn');
+}
+
+function float32ToInt16(f32) {
+  const i16 = new Int16Array(f32.length);
+  for (let i = 0; i < f32.length; i++) {
+    const s = Math.max(-1, Math.min(1, f32[i]));
+    i16[i] = s < 0 ? s * 32768 : s * 32767;
+  }
+  return i16;
+}
+
+function drawWaveform() {
+  const canvas = document.getElementById('audio-canvas');
+  canvas.width = canvas.offsetWidth;
+  canvas.height = 60;
+  const ctx = canvas.getContext('2d');
+  function draw() {
+    animFrame = requestAnimationFrame(draw);
+    if (!analyser) return;
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteTimeDomainData(data);
+    ctx.fillStyle = '#0d0f14';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#238636';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const step = canvas.width / data.length;
+    data.forEach((v, i) => {
+      const y = (v / 128) * (canvas.height / 2);
+      i === 0 ? ctx.moveTo(0, y) : ctx.lineTo(i * step, y);
+    });
+    ctx.stroke();
+  }
+  draw();
+}
+
+// ─── Conversation ─────────────────────────────────────────────────────────────
+function setMessage(txt) { document.getElementById('conv-message').value = txt; }
+
+async function sendMessage() {
+  const data = await api('POST', '/conversation/message', {
+    message:    document.getElementById('conv-message').value,
+    session_id: sessionId || null,
+    language:   document.getElementById('conv-lang').value
+  }, 'conv-result');
+  if (data?.guidance) log(`AI: ${data.guidance.slice(0, 80)}…`, 'ok');
+  if (data?.threat_level) setThreat(data.threat_level);
+}
+
+async function getConversation() {
+  if (!sessionId) { setResult('conv-history-result', 'No active session ID', true); return; }
+  await api('GET', `/conversation/${sessionId}`, null, 'conv-history-result');
+}
+
+// ─── TTS ──────────────────────────────────────────────────────────────────────
+function setTTS(text, lang) {
+  document.getElementById('tts-text').value = text;
+  document.getElementById('tts-lang').value = lang;
+}
+
+async function synthesizeTTS() {
+  const text = document.getElementById('tts-text').value.trim();
+  const lang = document.getElementById('tts-lang').value;
+  if (!text) { log('TTS: empty text', 'err'); return; }
+
+  const blob = await apiAudio('/tts/synthesize', { text, language: lang });
+  if (!blob) return;
+
+  const url = URL.createObjectURL(blob);
+  const player = document.getElementById('tts-player');
+  player.src = url;
+  player.style.display = 'block';
+  player.play().catch(e => log(`Audio play error: ${e.message}`, 'err'));
+}
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
+function getReportSessionId() {
+  return document.getElementById('report-session-id').value.trim() || sessionId;
+}
+
+async function getReport() {
+  const sid = getReportSessionId();
+  if (!sid) { log('No session ID — start and end a session first', 'err'); return; }
+  await api('GET', `/reports/${sid}`, null, 'report-result');
+}
+
+async function getTimeline() {
+  const sid = getReportSessionId();
+  if (!sid) { log('No session ID', 'err'); return; }
+  await api('GET', `/timeline/${sid}`, null, 'timeline-result');
+}
+
+async function getTranscripts() {
+  const sid = getReportSessionId();
+  if (!sid) { log('No session ID', 'err'); return; }
+  await api('GET', `/transcripts/${sid}`, null, 'transcripts-result');
+}
+
+async function getAnalytics() {
+  const data = await api('GET', '/analytics', null, 'analytics-result');
+  if (!data) return;
+  const grid = document.getElementById('analytics-grid');
+  grid.innerHTML = '';
+  const stats = [
+    { val: data.total_sessions   ?? '—', lbl: 'Total Sessions' },
+    { val: data.active_sessions  ?? '—', lbl: 'Active Sessions' },
+    { val: data.total_contacts   ?? '—', lbl: 'Contacts Saved' },
+    { val: data.high_threat_count ?? '—', lbl: 'High Threat Events' },
+    { val: data.avg_session_duration ?? '—', lbl: 'Avg Duration (s)' },
+    { val: data.total_transcripts ?? '—', lbl: 'Transcripts' }
+  ];
+  stats.forEach(s => {
+    grid.innerHTML += `<div class="stat-card"><div class="val">${s.val}</div><div class="lbl">${s.lbl}</div></div>`;
+  });
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  if (token)     { setToken(token); log('Restored token from localStorage', 'info'); }
+  if (sessionId) { setSession(sessionId); log(`Restored session: ${sessionId.slice(0,10)}…`, 'info'); }
+  pingServer();
+  log('SafeSteps E2E Test Dashboard ready', 'ok');
+});
+</script>
+</body>
+</html>

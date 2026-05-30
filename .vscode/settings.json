@@ -1,0 +1,7 @@
+{
+  "python.defaultInterpreterPath": "/Users/chandrasekhar/Desktop/Personal Projects/SS/SafeSteps-Backend/venv/bin/python",
+  "python.analysis.extraPaths": [
+    "/Users/chandrasekhar/Desktop/Personal Projects/SS/SafeSteps-Backend",
+    "/Users/chandrasekhar/Desktop/Personal Projects/SS/SafeSteps-Backend/venv/lib/python3.11/site-packages"
+  ]
+}

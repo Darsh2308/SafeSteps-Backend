@@ -1,0 +1,938 @@
+==========================================================
+SAFE STEPS AI V2 - FINAL SYSTEM DESIGN DOCUMENT
+==========================================================
+
+Last Updated: 2026-05-30
+Status: Backend Complete (v1 — see gaps section)
+
+PROJECT GOAL
+------------
+Safe Steps AI V2 is an AI-powered emergency response system
+that can operate in both online and offline environments.
+
+The system prioritizes:
+
+1. Immediate SOS delivery
+2. Human emergency contact communication
+3. Real-time threat detection
+4. AI-assisted emergency intelligence
+5. Multilingual support
+6. Offline functionality
+
+The AI must NEVER delay emergency SMS or emergency calls.
+
+
+==========================================================
+SUPPORTED LANGUAGES
+==========================================================
+
+The system supports:
+
+- English (en-IN)
+- Hindi (hi-IN)
+- Marathi (mr-IN)
+
+Future Expansion:
+
+- Gujarati
+- Tamil
+- Telugu
+- Kannada
+- Bengali
+
+
+==========================================================
+AUTHENTICATION
+==========================================================
+
+Flow:
+
+Register (first time)
+POST /auth/register
+↓
+Phone Number (unique login ID)
+Full Name, Age, Gender, Blood Group,
+Medical Notes, Preferred Language
+↓
+User ID generated (UUID — stored in MongoDB)
+JWT Token issued
+↓
+User Profile returned
+
+---
+
+Login (returning user)
+POST /auth/login
+↓
+Phone Number only
+↓
+JWT Token issued
+User Profile returned
+
+---
+
+Rules:
+
+- No OTP. No password. Phone number is the identity.
+- Duplicate registration → 400 error.
+- Unregistered login → 404 error.
+- All protected endpoints require:
+  Authorization: Bearer <token>
+
+---
+
+Profile Management:
+
+GET  /auth/me         → Get own profile
+PUT  /profile         → Update profile fields
+POST /auth/logout     → Client discards token
+
+
+==========================================================
+EMERGENCY CONTACT CONFIGURATION
+==========================================================
+
+Primary Contact
+---------------
+- Receives SMS with Maps Link
+- Receives Call
+
+Secondary Contact
+-----------------
+- Receives SMS with Maps Link
+
+Tertiary Contact
+----------------
+- Receives SMS with Maps Link
+
+Contacts ranked by priority (1 = highest).
+Managed via:
+
+POST   /contacts        → Add contact
+GET    /contacts        → List contacts
+PUT    /contacts/{id}   → Update contact
+DELETE /contacts/{id}   → Remove contact
+
+
+==========================================================
+COMPLETE AI STACK
+==========================================================
+
+ONLINE MODE (Backend — cloud APIs)
+------------------------------------
+
+Speech To Text:
+- Sarvam STT (saaras:v1)
+- Languages: en-IN, hi-IN, mr-IN
+
+Intelligence:
+- Primary:  Groq llama-3.1-8b-instant
+- Fallback: Gemini 2.0 Flash
+
+Text To Speech:
+- Sarvam TTS (bulbul:v1)
+- Returns WAV audio bytes
+- Endpoint: POST /tts/synthesize
+
+
+OFFLINE MODE (On-Device — mobile only)
+----------------------------------------
+
+Speech To Text:
+- Faster Whisper Mobile
+- Runs entirely on the Android device
+- No API key required
+- No internet required
+
+Intelligence:
+- Gemma 3n
+- Runs entirely on the Android device
+- No API key required
+- No internet required
+
+Text To Speech:
+- Android Native TTS
+- Built into Android OS
+- No download required
+
+
+NOTE: Offline AI models run ON THE DEVICE, not on the
+backend server. The backend is not involved in offline mode.
+The mobile app switches to local processing automatically
+when internet is unavailable.
+
+
+ALWAYS ACTIVE COMPONENTS (Backend)
+------------------------------------
+
+Voice Activity Detection:
+- Silero VAD (ONNX model, runs in backend pipeline)
+- Fallback: energy-based dBFS detection
+
+Audio Event Detection:
+- Keyword + dBFS based detection (v1 — backend)
+- YAMNet + Custom Distress Detection Layer (planned v2)
+
+Threat Engine:
+- Threat Fusion Engine (backend)
+- Combines: speech + audio events + GPS + call status
+
+
+==========================================================
+ROLE OF EACH COMPONENT
+==========================================================
+
+1. SILERO VAD
+-------------
+
+Purpose:
+Detect whether a person is speaking.
+
+Benefits:
+
+- Avoid processing silence
+- Reduce battery consumption
+- Reduce AI processing load
+- Reduce latency
+
+Example:
+
+[Silence]
+↓
+Ignore
+
+"Help me"
+↓
+Process Audio
+
+
+----------------------------------------------------------
+
+2. SARVAM STT
+-------------
+
+Used only when internet is available.
+
+Responsibilities:
+
+- Speech To Text
+- Language Detection
+- Multilingual Support
+
+Example:
+
+Input:
+"Mujhe koi follow kar raha hai"
+
+Output:
+"Someone is following me"
+
+----------------------------------------------------------
+
+3. FASTER WHISPER MOBILE
+------------------------
+
+Offline Speech To Text Engine (on-device)
+
+Responsibilities:
+
+- Offline speech recognition
+- Hindi recognition
+- Marathi recognition
+- English recognition
+
+Works without internet.
+No backend involvement in offline mode.
+
+----------------------------------------------------------
+
+4. AUDIO EVENT DETECTOR
+-----------------------
+
+Responsibilities:
+
+Detect:
+
+- Screams
+- Crying
+- Aggressive Voices
+- Panic Sounds
+- Heavy Breathing
+- Vehicle Crashes
+- Glass Breaking
+
+Current implementation: keyword + dBFS thresholds (v1)
+Planned upgrade: YAMNet ML classification (v2)
+
+Example:
+
+Input:
+Background scream
+
+Output:
+Distress Event Detected
+
+----------------------------------------------------------
+
+5. GROQ LLAMA 3.1 8B INSTANT
+----------------------------
+
+Used in Online Mode (backend, cloud API)
+
+Responsibilities:
+
+- Threat Detection
+- Situation Understanding
+- Incident Classification
+- Emergency Report Generation
+- Emergency Guidance
+
+Fallback: Gemini 2.0 Flash (if Groq unavailable)
+
+Example:
+
+Input:
+"A man is following me"
+
+Output:
+
+Threat: HIGH
+Incident: STALKING
+
+----------------------------------------------------------
+
+6. GEMMA 3N
+-----------
+
+Used in Offline Mode (on-device, no API key)
+
+Responsibilities:
+
+- Threat Detection
+- Emergency Intelligence
+- Report Generation
+- Safety Guidance
+
+Works without internet.
+Runs entirely on Android device.
+
+----------------------------------------------------------
+
+7. SARVAM TTS
+-------------
+
+Used when internet is available (backend).
+
+Endpoint: POST /tts/synthesize
+Returns: WAV audio bytes
+
+Responsibilities:
+
+- AI Voice Responses
+- Emergency Guidance
+
+Languages:
+
+- English (en-IN)
+- Hindi (hi-IN)
+- Marathi (mr-IN)
+
+----------------------------------------------------------
+
+8. ANDROID NATIVE TTS
+---------------------
+
+Offline fallback (on-device).
+
+Responsibilities:
+
+- AI Voice Responses
+- Emergency Guidance
+
+Works without internet.
+No backend involvement.
+
+----------------------------------------------------------
+
+9. THREAT FUSION ENGINE
+-----------------------
+
+This is the most important component.
+
+It combines:
+
+- Speech Analysis
+- Audio Event Detection
+- Call Status
+- GPS Behaviour
+- Conversation Context
+
+Output:
+
+LOW
+MEDIUM
+HIGH
+CRITICAL
+
+Runs in the WebSocket audio pipeline on every chunk.
+Updates pushed to mobile app in real-time.
+
+
+==========================================================
+SCENARIO 1
+NORMAL SOS ACTIVATION
+==========================================================
+
+User presses volume buttons for 5 seconds.
+
+System Actions:
+
+1. SOS Activated
+   POST /emergency/start
+
+2. GPS Acquired
+   POST /location/update
+
+3. Maps Link Generated
+   https://maps.google.com/?q={lat},{lon}
+
+4. SMS Sent To Contact 1 (with Maps Link)
+5. SMS Sent To Contact 2 (with Maps Link)
+6. SMS Sent To Contact 3 (with Maps Link)
+7. Call Primary Contact (Android Telecom API)
+
+All within:
+
+2-5 seconds
+
+
+==========================================================
+SCENARIO 2
+CONTACT ANSWERS THE CALL
+==========================================================
+
+Flow:
+
+SOS Triggered
+↓
+Call Connected
+POST /calls/log  { status: "answered" }
+
+System Behavior:
+
+- Human communication gets priority
+- AI Voice Assistant disabled
+- Silent Monitoring enabled
+- Speech analysis continues (WebSocket open)
+- Audio event detection continues
+- Threat analysis continues
+
+AI does NOT interrupt the call.
+
+AI only:
+
+- Generates reports
+- Sends updates
+- Tracks location
+
+
+==========================================================
+SCENARIO 3
+CONTACT DOES NOT ANSWER
+==========================================================
+
+Flow:
+
+SOS Triggered
+↓
+Call Not Answered
+POST /calls/log  { status: "not_answered" }
+
+Retry Logic:
+
+Attempt 1 → Wait
+Attempt 2 → Wait
+Attempt 3
+
+Maximum: 3 attempts
+
+After 3 failed attempts:
+
+AI Assistant activates.
+
+AI asks:
+
+"Are you safe?"
+"What happened?"
+"Are you injured?"
+"Can you identify the attacker?"
+
+Endpoint: POST /conversation/message
+
+Status: Trigger logic planned (v2 — not yet implemented)
+
+
+==========================================================
+SCENARIO 4
+GOOD INTERNET AVAILABLE
+==========================================================
+
+Pipeline:
+
+Audio (WebSocket /ws/audio/{session_id})
+↓
+Silero VAD
+↓
+Sarvam STT (saaras:v1)
+↓
+Groq llama-3.1-8b-instant  [fallback: Gemini 2.0 Flash]
+↓
+Sarvam TTS (bulbul:v1)  → WAV bytes → mobile plays audio
+
+Benefits:
+
+- Better understanding
+- Better reasoning
+- Better conversations
+- Better reports
+
+
+==========================================================
+SCENARIO 5
+NO INTERNET AVAILABLE
+==========================================================
+
+Pipeline (fully on-device — no backend):
+
+Audio
+↓
+Silero VAD
+↓
+Faster Whisper Mobile
+↓
+Gemma 3n
+↓
+Android Native TTS
+
+Benefits:
+
+- Fully offline
+- No cloud dependency
+- Works in villages
+- Works in tunnels
+- Works in poor network zones
+
+Note: When internet is restored, the mobile app
+automatically switches back to the online pipeline.
+
+
+==========================================================
+SCENARIO 6
+DISTRESS SOUND DETECTED
+==========================================================
+
+User cannot speak.
+
+Example:
+
+- Screaming
+- Crying
+- Aggressive Voice
+
+Audio Event Detector:
+
+Distress Detected
+↓
+WebSocket pipeline processes audio events
+even when transcript is empty
+
+Threat Fusion Engine:
+
+Threat = HIGH
+
+Emergency Update Generated.
+
+No speech required.
+
+
+==========================================================
+SCENARIO 7
+VEHICLE ACCIDENT
+==========================================================
+
+Audio Detected:
+
+- Crash
+- Glass Breaking
+- Panic Sounds
+
+Threat Fusion Engine:
+
+Threat = CRITICAL
+
+System immediately sends:
+
+Critical Emergency Update
+
+with location.
+
+
+==========================================================
+SCENARIO 8
+MULTILINGUAL USER
+==========================================================
+
+User speaks Hindi:
+
+"Mujhe bachao"
+
+System:
+
+Language = Hindi (hi-IN)
+Sarvam STT detects language automatically.
+AI processes normally.
+
+----------------------------------------------------------
+
+User speaks Marathi:
+
+"Mala madat havi aahe"
+
+System:
+
+Language = Marathi (mr-IN)
+AI processes normally.
+
+----------------------------------------------------------
+
+User speaks English:
+
+"I need help"
+
+System:
+
+Language = English (en-IN)
+AI processes normally.
+
+
+==========================================================
+SCENARIO 9
+CONTINUOUS MONITORING
+==========================================================
+
+Every 30 Seconds:
+
+1. Refresh GPS
+   POST /location/update
+2. Generate New Maps Link
+3. Update Contacts (SMS with new location)
+4. Recalculate Threat Level
+
+Threat Levels:
+
+LOW
+MEDIUM
+HIGH
+CRITICAL
+
+Status: 30-second background loop planned (v2 — not yet implemented)
+Current: GPS update triggered manually by mobile app.
+
+
+==========================================================
+SCENARIO 10
+EMERGENCY REPORT GENERATION
+==========================================================
+
+Triggered automatically on session end.
+
+Example Report:
+
+Threat Level:     CRITICAL
+Incident:         Possible Assault
+User Statement:   "A man is following me"
+Detected Sounds:  Screaming, Aggressive Voice
+Current Location: https://maps.google.com/?q=18.52,73.85
+Generated By:     Groq Llama 3.1 8B / Gemma 3n
+
+Endpoint: GET /reports/{session_id}
+
+Report saved to MongoDB and returned on session close.
+
+
+==========================================================
+SCENARIO 11
+EMERGENCY RESOLVED
+==========================================================
+
+User presses "I Am Safe"
+
+System Actions:
+
+1. Stop Monitoring
+2. Stop Tracking
+3. Stop AI Session
+   POST /emergency/end
+4. Generate Emergency Report (auto)
+5. Notify Contacts (SMS)
+   "User is now safe. Emergency session closed."
+
+All session data (transcripts, locations, audio events,
+threat history) saved to MongoDB permanently.
+
+
+==========================================================
+FINAL TECH STACK
+==========================================================
+
+Frontend
+--------
+React Native
+
+Native Layer
+------------
+Kotlin Android Modules
+
+Location
+--------
+Android Location Services
+
+SMS
+---
+Android SMS Manager
++ MSG91 (server-side fallback via backend)
+
+Calling
+-------
+Android Telecom APIs
+
+Voice Activity Detection
+------------------------
+Silero VAD (backend ONNX)
+
+Speech To Text (Online)
+-----------------------
+Sarvam STT (saaras:v1) — backend API
+
+Speech To Text (Offline)
+------------------------
+Faster Whisper Mobile — on device
+
+Intelligence (Online)
+---------------------
+Groq llama-3.1-8b-instant — backend API
+Fallback: Gemini 2.0 Flash — backend API
+
+Intelligence (Offline)
+----------------------
+Gemma 3n — on device
+
+Text To Speech (Online)
+-----------------------
+Sarvam TTS (bulbul:v1) — backend API
+
+Text To Speech (Offline)
+------------------------
+Android Native TTS — on device
+
+Audio Event Detection
+---------------------
+v1: Keyword + dBFS threshold detection (backend)
+v2: YAMNet + Custom Distress Detector (planned)
+
+Threat Intelligence
+-------------------
+Threat Fusion Engine (backend)
+
+Backend Framework
+-----------------
+FastAPI (Python, async)
+
+Backend Database
+----------------
+MongoDB Atlas (cloud)
+ODM: Beanie 1.30 + Motor 3.x (async)
+
+Backend Authentication
+----------------------
+JWT (python-jose)
+Phone-based register/login — no OTP
+
+Backend SMS Gateway
+-------------------
+MSG91 (SOS alerts + safe alerts)
+Sender: SSAFES
+
+Backend Hosting
+---------------
+Deployment target: cloud VPS / container
+
+
+==========================================================
+API ENDPOINT REFERENCE
+==========================================================
+
+Authentication
+--------------
+POST /auth/register      → Register new user, get JWT
+POST /auth/login         → Login, get JWT
+POST /auth/logout        → Logout (client discards token)
+GET  /auth/me            → Get own profile
+
+Profile
+-------
+GET  /profile            → Get profile
+PUT  /profile            → Update profile
+
+Emergency Contacts
+------------------
+POST   /contacts         → Add contact
+GET    /contacts         → List contacts
+PUT    /contacts/{id}    → Update contact
+DELETE /contacts/{id}    → Remove contact
+
+Emergency Session
+-----------------
+POST /emergency/start    → Start SOS session
+POST /emergency/end      → End session (triggers report + safe SMS)
+GET  /emergency/history  → Past sessions
+
+Location
+--------
+POST /location/update    → Update GPS (triggers SOS SMS on first update)
+
+Audio WebSocket
+---------------
+WS /ws/audio/{session_id} → Stream audio chunks
+                            ← Threat level + AI response pushed back
+
+Conversation
+------------
+POST /conversation/message → Send text message to AI
+GET  /conversation/{session_id} → Get conversation history
+
+TTS
+---
+POST /tts/synthesize     → Text → WAV audio bytes
+
+Timeline
+--------
+GET /timeline/{session_id}   → Get event timeline
+POST /timeline/{session_id}  → Add manual event
+
+Transcripts
+-----------
+GET /transcripts/{session_id} → Get all transcripts
+
+Reports
+-------
+GET /reports/{session_id}     → Get generated report
+
+Calls
+-----
+POST /calls/log               → Log call attempt/status
+GET  /calls/{session_id}      → Get call history
+
+Notifications
+-------------
+POST /notifications/register  → Register device token
+GET  /notifications           → Get notification history
+
+Analytics
+---------
+GET /analytics                → User safety analytics
+
+
+==========================================================
+DATA MODEL
+==========================================================
+
+MongoDB Collections:
+
+users                → User profiles + settings + devices
+emergency_contacts   → Contacts linked to user_id
+emergency_sessions   → All session data embedded:
+                        - locations[]
+                        - timeline[]
+                        - transcripts[]
+                        - audio_events[]
+                        - threat_assessments[]
+                        - call_logs[]
+                        - report (embedded doc)
+notifications        → Push notification log
+
+
+==========================================================
+IMPLEMENTATION STATUS
+==========================================================
+
+COMPLETE
+--------
+[x] Phone-based register/login (JWT, no OTP)
+[x] Emergency session start/end
+[x] GPS update + Google Maps link generation
+[x] SOS SMS on first GPS update (MSG91)
+[x] Safe SMS on session end (MSG91)
+[x] WebSocket audio pipeline (VAD → STT → Events → Threat → Push)
+[x] Threat Fusion Engine (speech + audio + GPS + call)
+[x] Groq Llama 3.1 8B Instant (primary AI)
+[x] Gemini 2.0 Flash (AI fallback)
+[x] Sarvam STT — multilingual en/hi/mr
+[x] Sarvam TTS — WAV bytes via POST /tts/synthesize
+[x] Silero VAD (ONNX + energy fallback)
+[x] Audio event detection (keyword + dBFS, v1)
+[x] AI conversation module (history-aware, multilingual)
+[x] Emergency report generation (AI-generated, saved to MongoDB)
+[x] Timeline, Transcripts, Analytics endpoints
+[x] Push notification logging (stub)
+[x] MongoDB Atlas — all models migrated to Beanie async ODM
+[x] Emergency contacts CRUD
+
+PENDING (v2)
+-------------
+[ ] YAMNet ML audio classification (replace keyword-based)
+[ ] Real push notification delivery (Expo Push / FCM)
+[ ] MSG91 DLT-approved template (required for India production SMS)
+[ ] 30-second continuous GPS monitoring background loop
+[ ] Call-not-answered (3 attempts) → AI activation trigger
+
+
+==========================================================
+SHORT SUMMARY
+==========================================================
+
+Safe Steps AI V2 is an offline-capable, multilingual,
+AI-powered emergency response system.
+
+When SOS is triggered:
+
+1.  GPS is acquired immediately.
+2.  SMS is sent to 3 emergency contacts (with Maps link).
+3.  Primary contact is called.
+4.  Audio monitoring begins (WebSocket stream).
+5.  Silero VAD detects speech.
+6.  STT converts speech to text (Sarvam online / Whisper offline).
+7.  Audio Event Detector listens for screams,
+    crying, crashes and aggression.
+8.  Threat Fusion Engine calculates risk level.
+9.  Groq Llama (online) or Gemma (offline)
+    generates emergency intelligence.
+10. AI sends emergency updates and guidance via TTS.
+11. Live tracking continues until the user
+    marks themselves safe.
+12. Session report auto-generated on close.
+13. Safe SMS sent to all contacts.
+
+The system works in:
+- Cities
+- Villages
+- Poor Network Areas
+- Completely Offline Environments
+
+while supporting:
+- English
+- Hindi
+- Marathi
+
+and always prioritizes:
+SMS → CALL → HUMAN HELP → AI ASSISTANCE
