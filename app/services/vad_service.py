@@ -89,9 +89,9 @@ class VADService:
                 out, state = self.session.run(None, ort_inputs)
                 self._state = state  # Save state for next step
 
-                # Silero v5 returns output shape (1,) — out[0] is already a scalar
-                prob = float(out[0])
-                return bool(prob >= self.threshold)
+                # Squeeze handles any output shape (1,), (1,1), etc.
+                prob = float(np.squeeze(out[0]))
+                return prob >= self.threshold
 
             else:
                 # Fallback to energy-based VAD using Root Mean Square (RMS)

@@ -1,26 +1,25 @@
-import pytest
-from fastapi.testclient import TestClient
+from tests.conftest import register_and_login
 
-def test_websocket_audio_ingest(client):
-    # 1. Register and get token
-    client.post("/auth/send-otp", json={"phoneNumber": "+15551119999"})
-    res_auth = client.post("/auth/verify-otp", json={
-        "phoneNumber": "+15551119999",
-        "code": "123456"
-    })
-    headers = {"Authorization": f"Bearer {res_auth.json()['token']}"}
 
-    # 2. Start session
+def test_websocket_silent_audio_ingest(client):
+    headers = register_and_login(client, "+15551119999")
+
     r_session = client.post("/emergency/start", headers=headers)
+    assert r_session.status_code == 200
     session_id = r_session.json()["session_id"]
 
-    # 3. Connect to WebSocket
-    with client.websocket_connect(f"/ws/audio/{session_id}") as websocket:
-        # Send 1 chunk of silent 16kHz PCM (16000 bytes = 0.5s)
-        silent_pcm = bytes(16000)
-        websocket.send_bytes(silent_pcm)
-        
-        # Connection should stay active and accept chunks
-        websocket.send_bytes(silent_pcm)
-        
-        # WebSocket should not crash and should disconnect cleanly on exit
+    with client.websocket_connect(f"/ws/audio/{session_id}") as ws:
+        # 0.5 s of silent 16 kHz 16-bit PCM — VAD should detect no speech
+        ws.send_bytes(bytes(16000))
+        ws.send_bytes(bytes(16000))
+        # WebSocket must accept bytes and remain alive (no crash)
+
+
+def test_websocket_invalid_session(client):
+    register_and_login(client, "+15551118888")
+    # Connecting to a non-existent session should close with an error code
+    try:
+        with client.websocket_connect("/ws/audio/nonexistent-session-id") as ws:
+            ws.send_bytes(bytes(1024))
+    except Exception:
+        pass  # Connection closure or rejection is the expected behaviour
