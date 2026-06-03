@@ -1,9 +1,16 @@
-# SafeSteps AI V2 — Backend API Documentation
+# SafeSteps AI — Backend API Documentation
 
-**Version:** 2.0.0  
-**Base URL (local dev):** `http://localhost:8000`  
-**Base URL (production):** Set `EXPO_PUBLIC_API_BASE_URL` in the React Native app (`src/config/env.ts`)  
-**Interactive Docs:** `http://localhost:8000/docs`
+**Version:** 2.1.0 (lean build)
+**Base URL (local dev):** `http://localhost:8000`
+**Base URL (production):** `https://safesteps-backend-douj.onrender.com`
+**Interactive Docs:** `/docs` (Swagger UI)
+
+> **Scope note (2.1.0):** This backend was trimmed to only what the AI-driven, threat-aware
+> SOS feature needs. The following modules were **removed**: Profile, Contacts, Permissions,
+> Call Status, Reports, standalone Timeline/Transcript endpoints, and Analytics. Their data
+> (contacts, the user's name) lives on the device; the app sends all SMS itself via Android
+> `SmsManager`. The AI threat pipeline, its offline/low-connectivity **fallback agents**, and
+> TTS were all kept.
 
 ---
 
@@ -11,75 +18,41 @@
 
 1. [Authentication & Headers](#1-authentication--headers)
 2. [Auth Endpoints](#2-auth-endpoints)
-3. [Profile](#3-profile)
-4. [Emergency Contacts](#4-emergency-contacts)
-5. [Permissions Sync](#5-permissions-sync)
-6. [Emergency Session](#6-emergency-session)
-7. [GPS Location](#7-gps-location)
-8. [WebSocket — Live Audio](#8-websocket--live-audio)
-9. [AI Conversation](#9-ai-conversation)
-10. [Text-to-Speech (TTS)](#10-text-to-speech-tts)
-11. [Call Status](#11-call-status)
-12. [Reports](#12-reports)
-13. [Timeline](#13-timeline)
-14. [Transcripts](#14-transcripts)
-15. [Notifications](#15-notifications)
-16. [Analytics](#16-analytics)
-17. [Health & Monitoring](#17-health--monitoring)
-18. [Error Responses](#18-error-responses)
-19. [App Integration Map](#19-app-integration-map)
-20. [TypeScript Types for the App](#20-typescript-types-for-the-app)
+3. [Emergency Session](#3-emergency-session)
+4. [GPS Location](#4-gps-location)
+5. [WebSocket — Live Audio (core)](#5-websocket--live-audio-core)
+6. [AI Conversation](#6-ai-conversation)
+7. [Text-to-Speech (TTS)](#7-text-to-speech-tts)
+8. [Notifications](#8-notifications)
+9. [Health & Monitoring](#9-health--monitoring)
+10. [Error Responses](#10-error-responses)
+11. [Fallback Agents (offline / low connectivity)](#11-fallback-agents-offline--low-connectivity)
 
 ---
 
 ## 1. Authentication & Headers
 
-### How Authentication Works
-
-Every protected endpoint requires a **JWT Bearer token** in the `Authorization` header.
+Every protected endpoint requires a **JWT Bearer token**:
 
 ```
 Authorization: Bearer <token>
 ```
 
-The token is returned on **register** or **login** and never expires in dev (8-day expiry in production). The React Native app's `apiClient.ts` already handles this automatically via the request interceptor — it reads the token from `storageService` and attaches it.
+The token is returned on **register** or **login** (8-day expiry). Phone number is the unique identity — there is no password and no OTP.
 
-### Storing the Token (React Native)
-
-```typescript
-// After register or login — save the token
-await storageService.setItem('authToken', response.token);
-
-// The apiClient.ts interceptor reads it automatically on every request
-// No manual header management needed
-```
-
-### Unauthenticated Endpoints
-
-These endpoints do **not** require a token:
+**Unauthenticated endpoints:**
 - `POST /auth/register`
 - `POST /auth/login`
-- `GET /health`
-- `GET /metrics`
-- `GET /version`
-- `WS /ws/audio/{session_id}`
+- `GET /health`, `GET /metrics`, `GET /version`
+- `WS /ws/audio/{session_id}` (the `session_id` itself is the credential)
 
 ---
 
 ## 2. Auth Endpoints
 
-> **App file to update:** `src/services/apiServices.ts` → `authService`  
-> **App screen:** `src/screens/setup/PhoneVerificationScreen.tsx`
-
-### ⚠️ Breaking Change from Previous Version
-
-The old OTP flow (`/auth/send-otp`, `/auth/verify-otp`) has been **removed**. Replace with register + login below.
-
----
-
 ### POST /auth/register
 
-Creates a new user account. Phone number is the unique identity — no password.
+Creates a new user. Phone number is the unique ID.
 
 **Request Body**
 ```json
@@ -95,16 +68,7 @@ Creates a new user account. Phone number is the unique identity — no password.
 }
 ```
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `phone` | string | ✅ | Must be unique. Use E.164 format: `+91XXXXXXXXXX` |
-| `full_name` | string | ✅ | — |
-| `age` | string | ❌ | — |
-| `date_of_birth` | string | ❌ | — |
-| `gender` | string | ❌ | — |
-| `blood_group` | string | ❌ | — |
-| `medical_notes` | string | ❌ | — |
-| `preferred_language` | string | ❌ | Default: `"English"` |
+Only `phone` and `full_name` are required; the rest are optional.
 
 **Response — 201 Created**
 ```json
@@ -128,289 +92,46 @@ Creates a new user account. Phone number is the unique identity — no password.
 }
 ```
 
-**Error Responses**
-
-| Status | Condition | Message |
-|--------|-----------|---------|
-| 400 | Phone already registered | `"This phone number is already registered. Please log in instead."` |
-
----
+| Status | Condition |
+|--------|-----------|
+| 400 | Phone already registered → log in instead |
 
 ### POST /auth/login
 
-Login with a registered phone number. No password required.
-
 **Request Body**
 ```json
-{
-  "phone": "+919999999999"
-}
+{ "phone": "+919999999999" }
 ```
 
-**Response — 200 OK**  
-Same as register response (`TokenResponse` with token + user profile).
-
-**Error Responses**
-
-| Status | Condition | Message |
-|--------|-----------|---------|
-| 404 | Phone not registered | `"Phone number not registered. Please register first."` |
-
----
-
-### POST /auth/logout
-
-Invalidates the session. The client must discard the stored JWT token.
-
-**Headers:** `Authorization: Bearer <token>`  
-**Request Body:** None
-
-**Response — 200 OK**
-```json
-{
-  "success": true,
-  "message": "Logged out successfully"
-}
-```
-
----
-
-### GET /auth/me
-
-Returns the authenticated user's full profile.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response — 200 OK**  
-Returns `ProfileSchema` (same as the `user` object in `TokenResponse`).
-
----
-
-## 3. Profile
-
-> **App file:** `src/services/apiServices.ts` → `profileService`  
-> **App screen:** `src/screens/dashboard/ProfileScreen.tsx`
-
-### GET /profile
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response — 200 OK**
-```json
-{
-  "fullName": "Darsh Patil",
-  "age": "24",
-  "dateOfBirth": "2000-01-15",
-  "gender": "Male",
-  "bloodGroup": "O+",
-  "medicalNotes": "Diabetic",
-  "phone": "+919999999999",
-  "preferredLanguage": "English",
-  "notificationEnabled": true,
-  "privacyEnabled": true,
-  "themeDarkMode": true,
-  "sosSensitivity": 0.5
-}
-```
-
----
-
-### PUT /profile
-
-Update any profile fields. All fields are optional — only send what changed.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request Body** (all fields optional)
-```json
-{
-  "fullName": "Darsh Patil",
-  "age": "25",
-  "gender": "Male",
-  "bloodGroup": "O+",
-  "medicalNotes": "",
-  "preferredLanguage": "Hindi",
-  "notificationEnabled": true,
-  "privacyEnabled": false,
-  "themeDarkMode": true,
-  "sosSensitivity": 0.7
-}
-```
-
-**Response — 200 OK**  
-Returns updated `ProfileSchema`.
-
----
-
-### PUT /profile/language
-
-Quick update for preferred language only.
-
-**Request Body**
-```json
-{ "language": "hi-IN" }
-```
-
----
-
-### GET/PUT /profile/settings
-
-Get or update notification, privacy, theme, and SOS sensitivity settings.
-
-**PUT Request Body**
-```json
-{
-  "notificationEnabled": true,
-  "privacyEnabled": true,
-  "themeDarkMode": false,
-  "sosSensitivity": 0.6
-}
-```
-
----
-
-## 4. Emergency Contacts
-
-> **App file:** `src/services/apiServices.ts` → `contactService`  
-> **App screen:** `src/screens/dashboard/ContactsScreen.tsx`, `src/screens/setup/ContactsSetupScreen.tsx`  
-> **App component:** `src/components/AddContactModal.tsx`
-
-**Maximum 3 contacts per user.** Priority determines who gets called vs SMS'd only.
-
-| Priority | Behavior |
-|----------|----------|
-| `"Primary"` | Gets SMS with Maps link + phone call |
-| `"Secondary"` | Gets SMS with Maps link only |
-| `"Tertiary"` | Gets SMS with Maps link only |
-
-### POST /contacts
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request Body**
-```json
-{
-  "name": "Mom",
-  "relationship": "Mother",
-  "phoneNumber": "+919888888888",
-  "priority": "Primary"
-}
-```
-
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `name` | string | ✅ | — |
-| `relationship` | string | ✅ | e.g., Mother, Father, Friend |
-| `phoneNumber` | string | ✅ | E.164 format |
-| `priority` | string | ✅ | `"Primary"` / `"Secondary"` / `"Tertiary"` |
-
-**Response — 201 Created**
-```json
-{
-  "id": "a1b2c3d4-...",
-  "name": "Mom",
-  "relationship": "Mother",
-  "phoneNumber": "+919888888888",
-  "priority": "Primary"
-}
-```
-
-**Error Responses**
+**Response — 200 OK** — same `TokenResponse` shape as register.
 
 | Status | Condition |
 |--------|-----------|
-| 400 | Already have 3 contacts |
+| 404 | Phone not registered |
 
----
+### POST /auth/logout
 
-### GET /contacts
+`Authorization: Bearer <token>`. The client discards the JWT.
 
-Returns all contacts for the authenticated user, sorted by priority.
-
-**Response — 200 OK**
 ```json
-[
-  {
-    "id": "a1b2c3d4-...",
-    "name": "Mom",
-    "relationship": "Mother",
-    "phoneNumber": "+919888888888",
-    "priority": "Primary"
-  }
-]
+{ "success": true, "message": "Logged out successfully" }
 ```
 
----
+### GET /auth/me
 
-### PUT /contacts/{contact_id}
-
-Update an existing contact. Same request body as POST.
+Returns the authenticated user's profile (the same `user` object shape returned by register/login).
 
 ---
 
-### DELETE /contacts/{contact_id}
+## 3. Emergency Session
 
-**Response — 200 OK**
-```json
-{ "success": true }
-```
-
----
-
-## 5. Permissions Sync
-
-> **App file:** `src/services/permissionService.ts`  
-> **App screen:** `src/screens/setup/PermissionsScreen.tsx`
-
-Sync the device's runtime permission status to the backend. Call this once at app startup and again whenever permissions change.
-
-### POST /permissions/sync
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request Body**
-```json
-{
-  "permissions": [
-    { "name": "Location Access",       "description": "GPS coordinates during emergency.", "type": "location",      "status": true  },
-    { "name": "Microphone Usage",      "description": "Background audio and transcription.", "type": "microphone",  "status": true  },
-    { "name": "Send SMS",              "description": "Alert texts to contacts.",           "type": "sms",          "status": true  },
-    { "name": "Phone Calls",           "description": "Dial primary contacts.",             "type": "phone",        "status": true  },
-    { "name": "Access Contacts",       "description": "Import contacts from device.",       "type": "contacts",     "status": true  },
-    { "name": "Notifications",         "description": "Critical alert statuses.",           "type": "notifications","status": true  },
-    { "name": "Accessibility Service", "description": "Hardware trigger intercepts.",       "type": "accessibility","status": false }
-  ]
-}
-```
-
-`status: true` = granted, `status: false` = denied.
-
-**Response — 200 OK**
-```json
-{ "success": true, "message": "Permissions synced" }
-```
-
----
-
-### GET /permissions
-
-Returns cached permission state (defaults to all false if never synced).
-
----
-
-## 6. Emergency Session
-
-> **App file:** `src/services/apiServices.ts` → `emergencyService`  
-> **App component:** `src/components/SOSButton.tsx`, `src/hooks/useSosHold.ts`
-
-This is the core SOS flow. Start → Location → Audio Stream → End.
+The core SOS lifecycle: **start → location → audio stream → end**.
 
 ### POST /emergency/start
 
-Starts a new SOS session. If a session is already active, it is closed first.
+Starts a new SOS session. Any already-active session is closed first.
 
-**Headers:** `Authorization: Bearer <token>`  
-**Request Body:** None
+`Authorization: Bearer <token>` · no body.
 
 **Response — 200 OK**
 ```json
@@ -421,23 +142,19 @@ Starts a new SOS session. If a session is already active, it is closed first.
 }
 ```
 
-> **Store `session_id`** — needed for WebSocket, location updates, reports, and timeline.
-
----
+> **Store `session_id`** — required for the WebSocket and location updates.
 
 ### POST /emergency/end
 
-Ends the active session. Automatically:
-1. Generates AI incident report
+Ends the active session and returns a compiled incident summary.
 
-> **Safe SMS** is sent by the app via Android SmsManager after receiving this response — not by the backend.
+`Authorization: Bearer <token>` · no body.
 
-**Headers:** `Authorization: Bearer <token>`  
-**Request Body:** None
+> **Note (2.1.0):** End no longer runs a separate AI report-generation step. The returned
+> `severity` / `summary` / `incidentType` are derived from the **live threat assessments**
+> recorded during the session. The "safe" SMS is sent by the app via Android `SmsManager`.
 
-**Response — 200 OK**  
-Returns `LoggedIncidentSchema` (full session summary with report).
-
+**Response — 200 OK** — `LoggedIncidentSchema`:
 ```json
 {
   "id": "cfc004e0-...",
@@ -446,137 +163,87 @@ Returns `LoggedIncidentSchema` (full session summary with report).
   "endTime": "14:47:10",
   "duration": "11m 48s",
   "severity": "HIGH",
-  "incidentType": "Stalking",
-  "summary": "User reported being followed while walking alone...",
-  "actionsPerformed": ["SOS Triggered", "SMS sent to 1 contact", "Live GPS tracking enabled"],
-  "recommendations": ["Vary your route home", "Share location with trusted contact"],
-  "timeline": [...],
-  "transcript": [...]
+  "incidentType": "SOS Activation",
+  "summary": "User describes being followed and expresses fear",
+  "actionsPerformed": ["SOS Activated"],
+  "timeline": [ ... ],
+  "transcript": [ ... ]
 }
 ```
-
----
 
 ### GET /emergency/current
 
-Returns the currently active session, or `null` if none.
+Returns the active session (same shape as `/start`) or `null`.
 
-**Response — 200 OK**
-```json
-{
-  "session_id": "cfc004e0-...",
-  "tracking_id": "8b3f2a1c-...",
-  "created_at": "2026-05-30T14:35:22.000Z"
-}
-```
-or `null`
+### GET /emergency/incidents · GET /emergency/history
 
----
+Both return an array of `LoggedIncidentSchema` for the authenticated user, newest first.
 
-### GET /emergency/history
+### GET /emergency/{session_id}
 
-Returns all past sessions for the authenticated user, sorted newest first.
+Returns a single `LoggedIncidentSchema` by id.
 
-**Response — 200 OK**  
-Array of `LoggedIncidentSchema`.
+### POST /emergency/trigger
+
+Alias of `/start` that returns the compiled `LoggedIncidentSchema`.
 
 ---
 
-## 7. GPS Location
-
-> **App integration:** Call after SOS starts, then every 30 seconds while session is active.
+## 4. GPS Location
 
 ### POST /location/update
 
-**Headers:** `Authorization: Bearer <token>`
+`Authorization: Bearer <token>`
 
 **Request Body**
 ```json
-{
-  "latitude": 19.0760,
-  "longitude": 72.8777,
-  "accuracy": 5.0,
-  "speed": 0.0,
-  "heading": 0.0
-}
+{ "latitude": 19.0760, "longitude": 72.8777, "accuracy": 5.0, "speed": 0.0, "heading": 0.0 }
 ```
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `latitude` | float | ✅ | — |
 | `longitude` | float | ✅ | — |
-| `accuracy` | float | ❌ | Meters. Default 0.0 |
-| `speed` | float | ❌ | **m/s** (not km/h). Default 0.0 |
-| `heading` | float | ❌ | Degrees 0–360. Default 0.0 |
-
-> **Important:** `speed` is in **m/s**. Convert from km/h: `speed_ms = speed_kmh / 3.6`  
-> Speeds > 80 km/h (22.2 m/s) escalate threat to MEDIUM via the Threat Fusion Engine.
+| `accuracy` | float | ❌ | meters |
+| `speed` | float | ❌ | **m/s** (km/h ÷ 3.6). Sustained >80 m/s combined with a crash event escalates threat in the WebSocket pipeline |
+| `heading` | float | ❌ | degrees 0–360 |
 
 **Response — 200 OK**
 ```json
-{
-  "success": true,
-  "maps_link": "https://maps.google.com/?q=19.076,72.8777",
-  "is_first_update": true
-}
+{ "success": true, "maps_link": "https://maps.google.com/?q=19.076,72.8777", "is_first_update": true }
 ```
 
-> **`is_first_update: true`** means this is the first GPS fix of the session.  
-> When you receive this, **send the SOS SMS from the app** using Android SmsManager with `maps_link`.  
-> Subsequent updates (`is_first_update: false`) only track movement — no SMS needed unless you want periodic location updates.
+> On `is_first_update: true`, the app sends the SOS SMS via Android `SmsManager` using `maps_link`.
+
+### GET /location/{session_id} · GET /location/history/{session_id}
+
+Latest location, and the full movement trail, for a session.
 
 ---
 
-### GET /location/{session_id}
+## 5. WebSocket — Live Audio (core)
 
-Returns the latest GPS location for a session.
-
----
-
-### GET /location/history/{session_id}
-
-Returns all recorded locations for a session (full movement trail).
-
----
-
-## 8. WebSocket — Live Audio
-
-> **App integration:** Connect after `POST /emergency/start`. Stream microphone audio continuously.
+This is the heart of the feature: the user speaks, the backend transcribes and classifies the threat, and pushes the result back so the app can adapt its SOS SMS.
 
 ### WS /ws/audio/{session_id}
 
-**No auth header required** (session_id is the auth).  
-**Protocol:** Binary WebSocket  
-**Audio format:** Raw PCM, 16kHz, 16-bit signed, Mono
+- **No auth header** — the `session_id` is the credential.
+- **Protocol:** binary WebSocket.
+- **Audio format:** raw PCM, 16 kHz, 16-bit signed, mono.
 
-**Connection URL:**
+**Connection URL**
 ```
+wss://safesteps-backend-douj.onrender.com/ws/audio/{session_id}
 ws://localhost:8000/ws/audio/{session_id}
-ws://your-production-domain/ws/audio/{session_id}
 ```
 
----
+### Sending audio (client → server)
 
-### Sending Audio (Client → Server)
+Send raw PCM bytes as binary messages. Recommended chunk size **4096 samples** (256 ms at 16 kHz). The backend gates each chunk through VAD, accumulates speech, and runs STT after ~1.5 s of trailing silence (with a ~3 s STT cooldown).
 
-Send raw PCM audio bytes as binary WebSocket messages. Convert Float32 microphone data to Int16 before sending:
+### Receiving messages (server → client)
 
-```typescript
-// React Native (using expo-av or react-native-audio-recorder-player)
-// Record at: sampleRate=16000, channels=1, bitsPerSample=16
-// Send binary chunks continuously
-
-webSocket.send(int16ArrayBuffer);
-```
-
-**Recommended chunk size:** 4096 samples (256ms at 16kHz)  
-The backend accumulates speech and fires STT every ~3 seconds (rate-limit cooldown).
-
----
-
-### Receiving Messages (Server → Client)
-
-The server pushes a JSON message after every STT + AI analysis cycle:
+A JSON message is pushed after each STT + AI analysis cycle:
 
 ```json
 {
@@ -595,128 +262,94 @@ The server pushes a JSON message after every STT + AI analysis cycle:
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `type` | string | Always `"threat_update"` |
-| `transcript` | string | What the user said (in detected language) |
-| `language` | string | BCP-47 code: `en-IN`, `hi-IN`, `mr-IN` |
+| `type` | string | always `"threat_update"` |
+| `transcript` | string | what the user said, in the detected language |
+| `language` | string | BCP-47 code: `en-IN`, `hi-IN`, `mr-IN`, … |
 | `threat_level` | string | `LOW` / `MEDIUM` / `HIGH` / `CRITICAL` |
-| `events` | string[] | Detected events: `Screams`, `Aggression`, `Crying`, `Vehicle Crash`, `Heavy Breathing` |
-| `is_safe` | bool | `true` if user explicitly said "I am safe" etc. |
-| `incident_type` | string | `Stalking`, `Assault`, `Robbery`, `Accident`, `Medical Emergency`, `None`, etc. |
-| `reasons` | string | AI explanation for the threat assessment |
+| `events` | string[] | e.g. `Screams`, `Aggression`, `Crying`, `Vehicle Crash`, `Heavy Breathing` |
+| `is_safe` | bool | `true` when the user explicitly indicates safety → level resets to `LOW` |
+| `incident_type` | string | `Stalking`, `Assault`, `Robbery`, `Accident`, `None`, … |
+| `reasons` | string | AI explanation of the assessment |
 | `timestamp` | string | ISO 8601 UTC |
 
----
+> **Feature hook:** the app uses `threat_level` (+ `incident_type`/`reasons`) from this message to rewrite the recurring 20-second SOS SMS and encode the threat level. See the app-side spec `AI_THREAT_AWARE_SMS_FEATURE.md`.
 
-### WebSocket Lifecycle
+### Lifecycle
 
 ```
-1. POST /emergency/start          → get session_id
-2. POST /location/update          → first GPS (triggers SOS SMS)
-3. WS connect /ws/audio/{id}      → open connection
-4. Send PCM audio chunks          → continuous stream
-5. Receive threat_update messages → update UI in real time
-6. WS disconnect                  → stop streaming
-7. POST /emergency/end            → generates report + safe SMS
+1. POST /emergency/start        → session_id
+2. POST /location/update        → first GPS (app then sends SOS SMS)
+3. WS connect /ws/audio/{id}    → open
+4. stream PCM chunks            → continuous
+5. receive threat_update msgs   → app adapts the SMS + UI
+6. WS disconnect
+7. POST /emergency/end          → compiled incident summary
 ```
 
----
+### Threat level colours (suggested UI)
 
-### Threat Level Display
+| Level | Hex |
+|-------|-----|
+| LOW | `#3fb950` |
+| MEDIUM | `#f0a030` |
+| HIGH | `#f85149` |
+| CRITICAL | `#ff4444` |
 
-Use these colors in the app UI:
+### De-escalation — safe phrases
 
-| Level | Color | Hex |
-|-------|-------|-----|
-| `LOW` | Green | `#3fb950` |
-| `MEDIUM` | Amber | `#f0a030` |
-| `HIGH` | Red | `#f85149` |
-| `CRITICAL` | Bright Red | `#ff4444` |
-
----
-
-### De-escalation — Safe Phrases
-
-If the user says any of these, `is_safe` will be `true` and `threat_level` will drop to `LOW`:
-
+If the user says any of these, `is_safe` becomes `true` and `threat_level` drops to `LOW`:
 - **English:** "I am safe", "I'm okay", "false alarm", "police is here", "all clear"
 - **Hindi:** "मैं सुरक्षित हूं", "सब ठीक है", "पुलिस आ गई"
 - **Marathi:** "मी सुरक्षित आहे", "पोलीस आले"
 
 ---
 
-## 9. AI Conversation
-
-> **App integration:** Active during an SOS session when the contact does not answer (Scenario 3 in workflow).
+## 6. AI Conversation
 
 ### POST /conversation/message
 
-Sends a message to the AI safety assistant. Context-aware — uses last 10 exchanges.
+Text chat with the AI safety assistant (context-aware — uses the session's recent transcripts). Backed by Groq with the Gemini → mock fallback chain.
 
-**Headers:** `Authorization: Bearer <token>`
+`Authorization: Bearer <token>`
 
 **Request Body**
 ```json
-{
-  "message": "Someone is following me. I'm alone on a dark street.",
-  "language": "en-IN"
-}
+{ "message": "Someone is following me. I'm alone on a dark street.", "language": "en-IN" }
 ```
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `message` | string | ✅ | The user's text or speech-to-text result |
-| `language` | string | ❌ | BCP-47 code. AI detects automatically if omitted |
+`language` is optional (auto-detected / inferred from the session if omitted).
 
 **Response — 200 OK**
 ```json
 {
   "guidance": "Stay calm. Move towards a well-lit area with people. Do not go home directly.",
-  "questions": [
-    "Is the person keeping their distance or approaching you?",
-    "Are you near any open shops or buildings?"
-  ],
-  "recommendations": [
-    "Walk towards a crowded area or police station.",
-    "Keep your primary contact on speed dial."
-  ]
+  "questions": ["Is the person approaching you?", "Are you near any open shops?"],
+  "recommendations": ["Walk towards a crowded area or police station.", "Keep your primary contact on speed dial."]
 }
 ```
 
-> The AI responds **in the same language** the user spoke in (`language` field).
+The AI responds in the same language the user spoke.
 
 ---
 
-## 10. Text-to-Speech (TTS)
-
-> **App integration:** Play this audio after receiving AI guidance. Fall back to Android Native TTS if this returns 204.
+## 7. Text-to-Speech (TTS)
 
 ### POST /tts/synthesize
 
-Converts AI response text to speech audio.
+Converts AI guidance text to speech (Sarvam `bulbul:v1`).
 
-**Headers:** `Authorization: Bearer <token>`
+`Authorization: Bearer <token>`
 
 **Request Body**
 ```json
-{
-  "text": "Stay calm. Move towards a well-lit area.",
-  "language": "en-IN"
-}
+{ "text": "Stay calm. Move towards a well-lit area.", "language": "en-IN" }
 ```
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `text` | string | ✅ | Max 500 characters |
-| `language` | string | ❌ | Default: `"en-IN"`. Also supports `hi-IN`, `mr-IN` |
+`text` max ~500 chars. `language` default `en-IN` (also `hi-IN`, `mr-IN`, …).
 
-**Response — 200 OK**  
-Binary WAV audio bytes (`Content-Type: audio/wav`).
+- **200 OK** — binary WAV (`Content-Type: audio/wav`).
+- **204 No Content** — `SARVAM_API_KEY` not configured → app should fall back to Android native TTS.
 
-**Response — 204 No Content**  
-Returned when `SARVAM_API_KEY` is not set in `.env`.  
-**App should fall back to Android Native TTS** when it receives 204.
-
-**Voices Used:**
 | Language | Speaker |
 |----------|---------|
 | `en-IN`, `hi-IN`, `mr-IN`, `bn-IN` | `anushka` (female) |
@@ -724,674 +357,78 @@ Returned when `SARVAM_API_KEY` is not set in `.env`.
 
 ---
 
-## 11. Call Status
+## 8. Notifications
 
-> **App integration:** Log every call attempt to the primary contact from Android Telecom APIs.
-
-### POST /call/status
-
-Logs the current state of the emergency call. Used by the Threat Fusion Engine to escalate if calls fail.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request Body**
-```json
-{
-  "state": "Answered"
-}
-```
-
-| `state` value | When to send |
-|---------------|-------------|
-| `"Initiated"` | When the call is placed |
-| `"Ringing"` | When the remote phone starts ringing |
-| `"Answered"` | When the contact picks up |
-| `"Ended"` | When the call ends normally |
-| `"Failed"` | When no one answered / call dropped |
-
-**Response — 200 OK**
-```json
-{ "success": true, "message": "Call status updated" }
-```
-
-> **Threat escalation:** If `"Failed"` appears in the last 5 call logs and threat level is currently LOW, it escalates to MEDIUM automatically.
-
----
-
-### GET /call/{session_id}
-
-**Response — 200 OK**
-```json
-{
-  "state": "Answered",
-  "history": [
-    { "state": "Initiated", "timestamp": "2026-05-30T14:35:25.000Z" },
-    { "state": "Ringing",   "timestamp": "2026-05-30T14:35:27.000Z" },
-    { "state": "Answered",  "timestamp": "2026-05-30T14:35:31.000Z" }
-  ]
-}
-```
-
----
-
-## 12. Reports
-
-> **App screen:** `src/screens/dashboard/IncidentDetailsScreen.tsx`
-
-Reports are **auto-generated** when `POST /emergency/end` is called. No manual trigger needed.
-
-### GET /reports/{session_id}
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response — 200 OK**
-```json
-{
-  "threatLevel": "HIGH",
-  "incidentType": "Stalking",
-  "summary": "User was followed by an unknown individual for approximately 10 minutes while walking alone at night near a residential area.",
-  "actionsTaken": [
-    "SOS session activated",
-    "GPS tracking enabled",
-    "SMS with location sent to 1 contact"
-  ],
-  "recommendations": [
-    "Vary your route home regularly.",
-    "Share your live location with trusted contacts during late-night travel.",
-    "Report the incident to the nearest police station."
-  ]
-}
-```
-
----
-
-## 13. Timeline
-
-> **App screen:** `src/screens/dashboard/IncidentDetailsScreen.tsx`
-
-### GET /timeline/{session_id}
-
-Returns chronological event log for a session.
-
-**Response — 200 OK**
-```json
-[
-  { "time": "14:35:22", "event": "SOS session started" },
-  { "time": "14:35:30", "event": "GPS location acquired" },
-  { "time": "14:35:31", "event": "SOS SMS sent to Mom (+919888888888)" },
-  { "time": "14:36:05", "event": "Threat Level → HIGH" },
-  { "time": "14:37:12", "event": "Audio Event: Screams (AI-detected)" },
-  { "time": "14:47:10", "event": "User confirmed safety — session de-escalated." }
-]
-```
-
----
-
-### POST /timeline/event
-
-Manually add a timeline event (e.g., from the Android app when a hardware SOS button is pressed).
-
-**Request Body**
-```json
-{ "event": "Volume button SOS triggered by user" }
-```
-
----
-
-## 14. Transcripts
-
-### GET /transcripts/{session_id}
-
-Returns all speech transcripts for a session.
-
-**Response — 200 OK**
-```json
-[
-  {
-    "time": "14:36:05",
-    "speaker": "User",
-    "text": "Someone is following me",
-    "language": "en-IN",
-    "confidence": 0.94
-  },
-  {
-    "time": "14:37:12",
-    "speaker": "User",
-    "text": "Please help me",
-    "language": "en-IN",
-    "confidence": 0.91
-  }
-]
-```
-
----
-
-## 15. Notifications
+Push notifications fire automatically from the WebSocket pipeline when the threat escalates to HIGH or CRITICAL. Delivery is currently logged to MongoDB (real FCM/Expo delivery is a future step).
 
 ### POST /notifications/register
 
-Register device push token after login. Call once after app startup.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request Body**
+`Authorization: Bearer <token>`
 ```json
-{
-  "deviceToken": "ExponentPushToken[xxxx]",
-  "deviceType": "android"
-}
+{ "deviceToken": "ExponentPushToken[xxxx]", "deviceType": "android" }
 ```
+→ `{ "success": true, "message": "Device token registered" }`
 
-**Response — 201 Created**
+### POST /notifications/send
+
+`Authorization: Bearer <token>`
 ```json
-{ "success": true, "message": "Device token registered" }
+{ "title": "SOS ALERT", "body": "HIGH threat detected" }
 ```
-
-> **Note:** Push notification delivery is currently logged to MongoDB only. Real FCM/Expo delivery is a v2 feature.
-
----
 
 ### GET /notifications
 
-Returns notification history for the authenticated user.
-
-**Response — 200 OK**
-```json
-[
-  {
-    "id": "...",
-    "title": "SOS ALERT: HIGH Threat Detected",
-    "body": "User describes being followed and expresses fear",
-    "sent_at": "2026-05-30T14:36:05.000Z",
-    "status": "success"
-  }
-]
-```
+Returns the authenticated user's notification history.
 
 ---
 
-## 16. Analytics
-
-> **App screen:** `src/screens/dashboard/AnalyticsScreen.tsx`
-
-### GET /analytics
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response — 200 OK**
-```json
-{
-  "totalEncounters": 12,
-  "avgResponseLimit": "4m 22s",
-  "criticalCount": 2,
-  "highCount": 5,
-  "mediumCount": 3,
-  "lowCount": 2
-}
-```
-
----
-
-### GET /analytics/incidents
-
-Breakdown by incident type.
-
-```json
-[
-  { "type": "Stalking",  "count": 4 },
-  { "type": "Assault",   "count": 2 },
-  { "type": "Unknown",   "count": 6 }
-]
-```
-
----
-
-### GET /analytics/severity
-
-```json
-{
-  "CRITICAL": 2,
-  "HIGH": 5,
-  "MEDIUM": 3,
-  "LOW": 2
-}
-```
-
----
-
-### GET /analytics/monthly
-
-Last 180 days, grouped by month.
-
-```json
-[
-  { "month": "2026-05", "count": 3 },
-  { "month": "2026-04", "count": 2 }
-]
-```
-
----
-
-## 17. Health & Monitoring
+## 9. Health & Monitoring
 
 ### GET /health
-
 ```json
-{
-  "status": "healthy",
-  "database": "connected",
-  "timestamp": "2026-05-30T14:00:00.000Z"
-}
+{ "status": "healthy", "database": "connected", "timestamp": "2026-05-30T14:00:00.000Z" }
+```
+
+### GET /metrics
+```json
+{ "cpu_usage_pct": 3.1, "memory_usage_mb": 142.0, "active_websocket_connections": 1 }
 ```
 
 ### GET /version
-
 ```json
-{
-  "app_name": "Safe Steps AI Backend",
-  "version": "2.0.0",
-  "api_environment": "production"
-}
+{ "app_name": "Safe Steps AI Backend", "version": "2.1.0", "api_environment": "production" }
 ```
 
 ---
 
-## 18. Error Responses
-
-All errors follow this format:
+## 10. Error Responses
 
 ```json
-{
-  "detail": "Human-readable error message"
-}
+{ "detail": "Human-readable error message" }
 ```
 
-Or for validation errors (422):
+Validation errors (422) use FastAPI's standard list format.
 
-```json
-{
-  "detail": [
-    {
-      "type": "missing",
-      "loc": ["body", "phone"],
-      "msg": "Field required",
-      "input": {}
-    }
-  ]
-}
-```
-
-| HTTP Status | Meaning |
-|-------------|---------|
-| 400 | Bad request (duplicate phone, max contacts exceeded) |
-| 401 | Missing or invalid JWT token |
-| 404 | Resource not found (user, session, contact) |
-| 422 | Validation error — wrong field names or types |
-| 429 | Rate limit exceeded (Sarvam STT — handled internally) |
+| Status | Meaning |
+|--------|---------|
+| 400 | Bad request (e.g. duplicate phone) |
+| 401 | Missing/invalid JWT |
+| 404 | Resource not found (user, session) |
+| 422 | Validation error |
+| 429 | Upstream rate limit (Sarvam STT — handled internally) |
 | 500 | Internal server error |
 
 ---
 
-## 19. App Integration Map
+## 11. Fallback Agents (offline / low connectivity)
 
-This table shows which screen/file in the React Native app connects to which API endpoint, and what needs updating.
+These were **kept** deliberately — they keep threat detection and AI guidance working when the primary cloud LLM (Groq) is slow, rate-limited, or unreachable.
 
-| Screen / File | Current State | API to Call | Action Required |
-|---------------|---------------|-------------|-----------------|
-| `PhoneVerificationScreen.tsx` | Calls `/auth/send-otp` + `/auth/verify-otp` | `POST /auth/register` + `POST /auth/login` | **Update** `authService` in `apiServices.ts` |
-| `ProfileSetupScreen.tsx` | — | `POST /auth/register` (pass all fields here) | Integrate on form submit |
-| `ProfileScreen.tsx` | Calls `profileService.getProfile()` | `GET /profile` | ✅ Already wired (check field names) |
-| `ContactsSetupScreen.tsx` + `ContactsScreen.tsx` | Calls `contactService.addContact()` | `POST /contacts` | **Fix field:** `phoneNumber` (camelCase), `priority` as string |
-| `PermissionsScreen.tsx` | Uses `permissionService.ts` | `POST /permissions/sync` | **Update** to send `permissions[]` array format |
-| `SOSButton.tsx` / `useSosHold.ts` | Calls `/emergency/trigger` | `POST /emergency/start` → `POST /location/update` → `WS connect` | **Update** to 3-step SOS start flow |
-| HomeScreen GPS loop | — | `POST /location/update` every 30s | **Add** background location interval |
-| Audio streaming | Not implemented | `WS /ws/audio/{session_id}` | **Implement** WebSocket + PCM audio pipeline |
-| AI Conversation | Not implemented | `POST /conversation/message` | **Implement** when call not answered |
-| TTS playback | Not implemented | `POST /tts/synthesize` → play WAV | **Implement** with Android MediaPlayer fallback |
-| Call logging | Not implemented | `POST /call/status` | **Implement** via Android Telecom callback |
-| `IncidentDetailsScreen.tsx` | Calls `getIncidents()` | `GET /emergency/history` + `GET /reports/{id}` + `GET /timeline/{id}` | Update endpoint names |
-| `AnalyticsScreen.tsx` | Calls `analyticsService.getAnalytics()` | `GET /analytics` | ✅ Already wired |
-| Push token | Not implemented | `POST /notifications/register` | **Add** after login |
+| Layer | Primary | Fallback chain | File |
+|-------|---------|----------------|------|
+| **Threat classification** | Groq `llama-3.1-8b-instant` | → multilingual **keyword fusion** (`threat_fusion.py`) when Groq fails or no key | `services/ai_threat_service.py` |
+| **AI guidance / conversation** | Groq | → **Google Gemini** (`google-genai`) → **mock** structured response | `services/ai_service.py` |
+| **Voice activity detection** | Silero VAD (ONNX, local) | → energy-based RMS detection if the ONNX model is unavailable | `services/vad_service.py` |
+| **TTS** | Sarvam `bulbul:v1` | → `204 No Content` so the app uses Android native TTS | `services/tts_service.py` |
 
----
-
-## 20. TypeScript Types for the App
-
-Replace or update `src/types/models.ts` with these types to match the current backend exactly.
-
-```typescript
-// ── Auth ──────────────────────────────────────────────────────────────────────
-
-export interface RegisterRequest {
-  phone: string;
-  full_name: string;
-  age?: string;
-  date_of_birth?: string;
-  gender?: string;
-  blood_group?: string;
-  medical_notes?: string;
-  preferred_language?: string;
-}
-
-export interface LoginRequest {
-  phone: string;
-}
-
-export interface TokenResponse {
-  success: boolean;
-  token: string;
-  user: ProfileState;
-}
-
-// ── Profile ───────────────────────────────────────────────────────────────────
-
-export interface ProfileState {
-  fullName: string;
-  age: string;
-  dateOfBirth: string;
-  gender: string;
-  bloodGroup: string;
-  medicalNotes: string;
-  phone: string;
-  preferredLanguage: string;
-  notificationEnabled: boolean;
-  privacyEnabled: boolean;
-  themeDarkMode: boolean;
-  sosSensitivity: number;
-}
-
-// ── Contacts ──────────────────────────────────────────────────────────────────
-
-export type ContactPriority = 'Primary' | 'Secondary' | 'Tertiary';
-
-export interface Contact {
-  id: string;
-  name: string;
-  relationship: string;
-  phoneNumber: string;        // camelCase — matches backend alias
-  priority: ContactPriority;
-}
-
-export type ContactCreate = Omit<Contact, 'id'>;
-
-// ── Emergency Session ─────────────────────────────────────────────────────────
-
-export interface EmergencySessionStart {
-  session_id: string;
-  tracking_id: string;
-  created_at: string;
-}
-
-export interface LocationUpdate {
-  latitude: number;
-  longitude: number;
-  accuracy?: number;
-  speed?: number;   // m/s — divide km/h by 3.6
-  heading?: number;
-}
-
-// ── WebSocket ─────────────────────────────────────────────────────────────────
-
-export type ThreatLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-export type AudioEvent = 'Screams' | 'Aggression' | 'Crying' | 'Vehicle Crash' | 'Heavy Breathing';
-export type IncidentType =
-  | 'Stalking' | 'Assault' | 'Robbery' | 'Harassment'
-  | 'Accident' | 'Medical Emergency' | 'Unknown' | 'None';
-
-export interface ThreatUpdate {
-  type: 'threat_update';
-  session_id: string;
-  transcript: string;
-  language: string;
-  threat_level: ThreatLevel;
-  events: AudioEvent[];
-  is_safe: boolean;
-  incident_type: IncidentType;
-  reasons: string;
-  timestamp: string;
-}
-
-// ── Conversation ──────────────────────────────────────────────────────────────
-
-export interface ConversationMessage {
-  message: string;
-  language?: string;
-}
-
-export interface ConversationResponse {
-  guidance: string;
-  questions: string[];
-  recommendations: string[];
-}
-
-// ── Call Status ───────────────────────────────────────────────────────────────
-
-export type CallState = 'Initiated' | 'Ringing' | 'Answered' | 'Ended' | 'Failed';
-
-export interface CallStatusUpdate {
-  state: CallState;
-}
-
-// ── Report ────────────────────────────────────────────────────────────────────
-
-export interface IncidentReport {
-  threatLevel: ThreatLevel;
-  incidentType: IncidentType;
-  summary: string;
-  actionsTaken: string[];
-  recommendations: string[];
-}
-
-// ── Timeline & Transcript ─────────────────────────────────────────────────────
-
-export interface TimelineEvent {
-  time: string;
-  event: string;
-}
-
-export interface TranscriptEvent {
-  time: string;
-  speaker: string;
-  text: string;
-  language?: string;
-  confidence?: number;
-}
-
-// ── Logged Incident (history) ─────────────────────────────────────────────────
-
-export interface LoggedIncident {
-  id: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  duration: string;
-  severity: ThreatLevel;
-  incidentType: IncidentType;
-  summary: string;
-  actionsPerformed: string[];
-  recommendations: string[];
-  timeline: TimelineEvent[];
-  transcript: TranscriptEvent[];
-}
-
-// ── Analytics ─────────────────────────────────────────────────────────────────
-
-export interface Analytics {
-  totalEncounters: number;
-  avgResponseLimit: string;
-  criticalCount: number;
-  highCount: number;
-  mediumCount: number;
-  lowCount: number;
-}
-
-// ── Permissions ───────────────────────────────────────────────────────────────
-
-export interface PermissionInfo {
-  name: string;
-  description: string;
-  type: string;
-  status: boolean;
-}
-
-export interface PermissionSyncRequest {
-  permissions: PermissionInfo[];
-}
-
-// ── Notifications ─────────────────────────────────────────────────────────────
-
-export interface NotificationRegister {
-  deviceToken: string;
-  deviceType: 'android' | 'ios';
-}
-```
-
----
-
-## Updated apiServices.ts
-
-Replace `src/services/apiServices.ts` with this to match the current backend:
-
-```typescript
-import { apiClient } from '../api/apiClient';
-import {
-  RegisterRequest, LoginRequest, TokenResponse,
-  ProfileState, Contact, ContactCreate,
-  EmergencySessionStart, LocationUpdate, LoggedIncident,
-  ConversationMessage, ConversationResponse,
-  CallStatusUpdate, IncidentReport,
-  TimelineEvent, TranscriptEvent,
-  Analytics, PermissionSyncRequest, NotificationRegister,
-} from '../types/models';
-
-// ── Auth ──────────────────────────────────────────────────────────────────────
-export const authService = {
-  register: async (payload: RegisterRequest): Promise<TokenResponse> => {
-    const res = await apiClient.post('/auth/register', payload);
-    return res.data;
-  },
-  login: async (phone: string): Promise<TokenResponse> => {
-    const res = await apiClient.post('/auth/login', { phone });
-    return res.data;
-  },
-  logout: async (): Promise<void> => {
-    await apiClient.post('/auth/logout');
-  },
-  getMe: async (): Promise<ProfileState> => {
-    const res = await apiClient.get('/auth/me');
-    return res.data;
-  },
-};
-
-// ── Profile ───────────────────────────────────────────────────────────────────
-export const profileService = {
-  getProfile: async (): Promise<ProfileState> => {
-    const res = await apiClient.get('/profile');
-    return res.data;
-  },
-  updateProfile: async (profile: Partial<ProfileState>): Promise<ProfileState> => {
-    const res = await apiClient.put('/profile', profile);
-    return res.data;
-  },
-};
-
-// ── Contacts ──────────────────────────────────────────────────────────────────
-export const contactService = {
-  getContacts: async (): Promise<Contact[]> => {
-    const res = await apiClient.get('/contacts');
-    return res.data;
-  },
-  addContact: async (contact: ContactCreate): Promise<Contact> => {
-    const res = await apiClient.post('/contacts', contact);
-    return res.data;
-  },
-  updateContact: async (id: string, contact: ContactCreate): Promise<Contact> => {
-    const res = await apiClient.put(`/contacts/${id}`, contact);
-    return res.data;
-  },
-  deleteContact: async (id: string): Promise<void> => {
-    await apiClient.delete(`/contacts/${id}`);
-  },
-};
-
-// ── Permissions ───────────────────────────────────────────────────────────────
-export const permissionsService = {
-  sync: async (payload: PermissionSyncRequest): Promise<void> => {
-    await apiClient.post('/permissions/sync', payload);
-  },
-};
-
-// ── Emergency ─────────────────────────────────────────────────────────────────
-export const emergencyService = {
-  start: async (): Promise<EmergencySessionStart> => {
-    const res = await apiClient.post('/emergency/start');
-    return res.data;
-  },
-  end: async (): Promise<LoggedIncident> => {
-    const res = await apiClient.post('/emergency/end');
-    return res.data;
-  },
-  getCurrent: async (): Promise<EmergencySessionStart | null> => {
-    const res = await apiClient.get('/emergency/current');
-    return res.data;
-  },
-  getHistory: async (): Promise<LoggedIncident[]> => {
-    const res = await apiClient.get('/emergency/history');
-    return res.data;
-  },
-};
-
-// ── Location ──────────────────────────────────────────────────────────────────
-export const locationService = {
-  update: async (payload: LocationUpdate): Promise<{ success: boolean; maps_link: string }> => {
-    const res = await apiClient.post('/location/update', payload);
-    return res.data;
-  },
-};
-
-// ── Call Status ───────────────────────────────────────────────────────────────
-export const callService = {
-  logStatus: async (state: CallStatusUpdate['state']): Promise<void> => {
-    await apiClient.post('/call/status', { state });
-  },
-};
-
-// ── Conversation ──────────────────────────────────────────────────────────────
-export const conversationService = {
-  sendMessage: async (payload: ConversationMessage): Promise<ConversationResponse> => {
-    const res = await apiClient.post('/conversation/message', payload);
-    return res.data;
-  },
-};
-
-// ── Reports ───────────────────────────────────────────────────────────────────
-export const reportService = {
-  getReport: async (sessionId: string): Promise<IncidentReport> => {
-    const res = await apiClient.get(`/reports/${sessionId}`);
-    return res.data;
-  },
-  getTimeline: async (sessionId: string): Promise<TimelineEvent[]> => {
-    const res = await apiClient.get(`/timeline/${sessionId}`);
-    return res.data;
-  },
-  getTranscripts: async (sessionId: string): Promise<TranscriptEvent[]> => {
-    const res = await apiClient.get(`/transcripts/${sessionId}`);
-    return res.data;
-  },
-};
-
-// ── Analytics ─────────────────────────────────────────────────────────────────
-export const analyticsService = {
-  getAnalytics: async (): Promise<Analytics> => {
-    const res = await apiClient.get('/analytics');
-    return res.data;
-  },
-};
-
-// ── Notifications ─────────────────────────────────────────────────────────────
-export const notificationService = {
-  registerDevice: async (payload: NotificationRegister): Promise<void> => {
-    await apiClient.post('/notifications/register', payload);
-  },
-};
-```
+The keyword-fusion engine recognises distress terms across English, Hindi, and Marathi (e.g. *bachao*, *vachva*) and also applies the GPS-speed override, so a meaningful `threat_level` is always returned even with no LLM connectivity.

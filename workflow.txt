@@ -2,8 +2,36 @@
 SAFE STEPS AI V2 - FINAL SYSTEM DESIGN DOCUMENT
 ==========================================================
 
-Last Updated: 2026-05-30
-Status: Backend Complete (v1 — see gaps section)
+Last Updated: 2026-06-03
+Status: Backend Complete — trimmed to "2.1.0 lean build"
+
+----------------------------------------------------------
+2.1.0 LEAN BUILD NOTE (2026-06-03)
+----------------------------------------------------------
+The backend was trimmed to only what the AI-driven, threat-aware
+SOS feature needs. Sections of this design doc describing the
+following modules are HISTORICAL — those endpoints/services were
+REMOVED from the code:
+
+  - Profile (/profile*)            - Reports (/report*, report_service)
+  - Contacts (/contacts*)          - Timeline endpoints (/timeline*)
+  - Permissions (/permissions*)    - Transcript endpoints (/transcript*)
+  - Call Status (/call*)           - Analytics (/analytics*)
+  - audio_event service (dead code)
+
+KEPT (the feature + its fallback agents):
+  Auth, Emergency session, Location, WebSocket /ws/audio,
+  Conversation, TTS, Notifications, Health —
+  plus the offline/low-connectivity fallback agents:
+  threat_fusion (keyword), Gemini->mock chat fallback, Silero-VAD
+  RMS fallback, and TTS 204 -> Android native TTS.
+
+Contacts and the user's name live on the device; the app sends ALL
+SMS itself via Android SmsManager. emergency/end no longer runs a
+separate AI report step — severity/summary come from the live
+threat assessments. See README.md and API_Documentation.md for the
+current, authoritative API surface.
+----------------------------------------------------------
 
 PROJECT GOAL
 ------------

@@ -9,7 +9,6 @@ from app.main import app
 async def _mock_init_db():
     from beanie import init_beanie
     from app.models.user import User
-    from app.models.contact import EmergencyContact
     from app.models.session import EmergencySession
     from app.models.notification import Notification
 
@@ -17,7 +16,7 @@ async def _mock_init_db():
     db = client["test_safesteps"]
     await init_beanie(
         database=db,
-        document_models=[User, EmergencyContact, EmergencySession, Notification],
+        document_models=[User, EmergencySession, Notification],
     )
 
 

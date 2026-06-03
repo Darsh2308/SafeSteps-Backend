@@ -165,13 +165,7 @@ async def _process_pipeline(session_id: str, audio_data: bytes, session_state: d
                 threat_level = "MEDIUM"
                 reasons += "; High-speed movement detected."
 
-        # 7. Call status override — non-text signal, stays rule-based
-        call_states = [c.state for c in session.call_logs[-5:]]
-        if "Failed" in call_states and threat_level == "LOW":
-            threat_level = "MEDIUM"
-            reasons += "; Emergency call failed to connect."
-
-        # 8. Record threat assessment
+        # 7. Record threat assessment
         session.threat_assessments.append(ThreatAssessment(
             threat_level=threat_level, confidence=0.90, reasons=reasons,
         ))

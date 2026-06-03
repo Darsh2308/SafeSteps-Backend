@@ -1,6 +1,26 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-from app.schemas.profile import ProfileSchema
+
+
+class ProfileSchema(BaseModel):
+    fullName: str = Field(default="", alias="fullName")
+    age: str = Field(default="")
+    dateOfBirth: str = Field(default="", alias="dateOfBirth")
+    gender: str = Field(default="")
+    bloodGroup: str = Field(default="", alias="bloodGroup")
+    medicalNotes: str = Field(default="", alias="medicalNotes")
+    phone: str = Field(default="")
+    preferredLanguage: str = Field(default="English", alias="preferredLanguage")
+    notificationEnabled: bool = Field(default=True, alias="notificationEnabled")
+    privacyEnabled: bool = Field(default=True, alias="privacyEnabled")
+    themeDarkMode: bool = Field(default=True, alias="themeDarkMode")
+    sosSensitivity: float = Field(default=0.5, alias="sosSensitivity")
+
+    # Allows Pydantic to read ORM models and translate snake_case/camelCase
+    model_config = {
+        "populate_by_name": True,
+        "from_attributes": True,
+    }
 
 
 class RegisterRequest(BaseModel):

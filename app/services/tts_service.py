@@ -4,7 +4,7 @@ from app.utils.logger import Logger
 
 _SARVAM_TTS_URL = "https://api.sarvam.ai/text-to-speech"
 _DEFAULT_SPEAKER = "anushka"
-_MODEL = "bulbul:v1"
+_MODEL = "bulbul:v2"  # bulbul:v1 was retired by Sarvam (400 invalid model); v2/v3 are current
 
 # Valid speakers as of 2026-05: meera was retired.
 # anushka = female (Indian English, Hindi, Marathi, Bengali, Gujarati)

@@ -37,25 +37,15 @@ app.add_middleware(
 )
 
 from app.routers import (
-    auth_router, profile_router, contacts_router, permissions_router,
-    emergency_router, location_router, reports_router, transcripts_router,
-    timeline_router, calls_router, conversation_router, notifications_router,
-    analytics_router, admin_router, tts_router, ws_audio,
+    auth_router, emergency_router, location_router,
+    conversation_router, notifications_router, admin_router, tts_router, ws_audio,
 )
 
 app.include_router(auth_router)
-app.include_router(profile_router)
-app.include_router(contacts_router)
-app.include_router(permissions_router)
 app.include_router(emergency_router)
 app.include_router(location_router)
-app.include_router(reports_router)
-app.include_router(transcripts_router)
-app.include_router(timeline_router)
-app.include_router(calls_router)
 app.include_router(conversation_router)
 app.include_router(notifications_router)
-app.include_router(analytics_router)
 app.include_router(admin_router)
 app.include_router(tts_router)
 app.include_router(ws_audio.router)

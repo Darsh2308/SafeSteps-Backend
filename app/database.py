@@ -11,7 +11,6 @@ def get_motor_client() -> motor.motor_asyncio.AsyncIOMotorClient:
 async def init_db() -> None:
     """Initialize Beanie with all document models. Call this once at app startup."""
     from app.models.user import User
-    from app.models.contact import EmergencyContact
     from app.models.session import EmergencySession
     from app.models.notification import Notification
 
@@ -20,6 +19,6 @@ async def init_db() -> None:
 
     await init_beanie(
         database=db,
-        document_models=[User, EmergencyContact, EmergencySession, Notification],
+        document_models=[User, EmergencySession, Notification],
     )
     Logger.info(f"MongoDB connected → database: '{settings.MONGODB_DB_NAME}'")

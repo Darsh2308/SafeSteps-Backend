@@ -6,7 +6,6 @@ from app.models.user import User
 from app.models.session import EmergencySession, TimelineEvent, ThreatAssessment
 from app.schemas.session import EmergencySessionStartResponse, LoggedIncidentSchema, TimelineEventSchema, TranscriptEventSchema
 from app.services.auth_service import get_current_user
-from app.services.report_service import report_service
 from app.utils.logger import Logger
 
 router = APIRouter(prefix="/emergency", tags=["Emergency Sessions"])
@@ -103,13 +102,6 @@ async def end_session(current_user: User = Depends(get_current_user)):
         session.ended_at = datetime.utcnow()
         session.timeline.append(TimelineEvent(event="SOS Deactivated — User Marked Safe"))
         await session.save()
-
-        # Safe SMS is sent by the app via Android SmsManager using the user's SIM
-        try:
-            await report_service.generate_and_save_report(session)
-            await session.save()
-        except Exception as e:
-            Logger.error(f"Report generation failed: {e}")
 
     return _compile(session)
 

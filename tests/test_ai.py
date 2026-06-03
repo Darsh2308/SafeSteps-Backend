@@ -1,7 +1,6 @@
 import pytest
 from app.services.vad_service import vad_service
 from app.services.stt_service import stt_service
-from app.services.audio_event import audio_event_detector
 from app.services.threat_fusion import threat_fusion_engine
 from app.services.ai_service import ai_service
 
@@ -22,21 +21,6 @@ def test_stt_transcription():
     assert "transcript" in result
     assert "language" in result
     assert "confidence" in result
-
-
-def test_audio_event_detection():
-    # Transcript keyword "crashed" → Vehicle Crash
-    events = audio_event_detector.detect_events(bytes(), "I just crashed my car!")
-    event_types = [e["event_type"] for e in events]
-    assert "Vehicle Crash" in event_types
-
-    # Distress phrase triggers Screams
-    events2 = audio_event_detector.detect_events(bytes(), "bachao bachao help me please help")
-    assert any(e["event_type"] == "Screams" for e in events2)
-
-    # No transcript + raw bytes only → no events (energy detection removed to avoid false positives)
-    events_raw = audio_event_detector.detect_events(b"\xff\x7f\x00\x80" * 4000)
-    assert events_raw == []
 
 
 def test_threat_fusion_engine():

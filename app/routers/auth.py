@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.models.user import User
-from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse
-from app.schemas.profile import ProfileSchema
+from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, ProfileSchema
 from app.services.auth_service import create_access_token, get_current_user
 from app.utils.logger import Logger
 
