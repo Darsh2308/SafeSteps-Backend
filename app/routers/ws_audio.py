@@ -142,6 +142,8 @@ async def _process_pipeline(session_id: str, audio_data: bytes, session_state: d
         is_safe       = analysis["is_safe"]
         incident_type = analysis["incident_type"]
         reasons       = analysis["reasons"]
+        guidance      = analysis.get("guidance", "")     # spoken AI reply for the SOS overlay
+        sms_summary   = analysis.get("sms_summary", "")  # short situation phrase for the alert SMS
 
         # 5. Save AI-detected audio events
         for event_type in events:
@@ -200,6 +202,8 @@ async def _process_pipeline(session_id: str, audio_data: bytes, session_state: d
             "is_safe":       is_safe,
             "incident_type": incident_type,
             "reasons":       reasons,
+            "guidance":      guidance,      # AI's spoken reply for the live SOS overlay
+            "sms_summary":   sms_summary,   # short situation phrase for the alert SMS
             "timestamp":     datetime.utcnow().isoformat(),
         })
 

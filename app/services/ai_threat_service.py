@@ -37,13 +37,25 @@ EVENTS (only include if genuinely detected in THIS transcript):
 INCIDENT TYPES:
 Stalking, Assault, Robbery, Harassment, Accident, Medical Emergency, Unknown, None
 
+GUIDANCE (spoken back to the user during the emergency):
+- One or two short, calm, directly actionable sentences the user can act on immediately.
+- Speak TO the user ("Move toward a lit area", "Stay on the call"), in the SAME language as the transcript.
+- If is_safe is true, reassure briefly ("Okay, glad you're safe.").
+
+SMS_SUMMARY (goes into the alert SMS sent to emergency contacts):
+- A short third-person phrase under ~100 characters describing the situation, in English.
+- e.g. "being followed by a stranger near the market", "car accident, possible injury".
+- Empty string if threat is LOW / user is safe.
+
 Return ONLY a valid JSON object with exactly these keys:
 {
   "threat_level": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
   "events": [],
   "is_safe": false,
   "incident_type": "None",
-  "reasons": "one sentence explanation"
+  "reasons": "one sentence explanation",
+  "guidance": "short spoken instruction to the user",
+  "sms_summary": "short situation phrase for the alert SMS"
 }"""
 
 
@@ -95,7 +107,7 @@ class AIThreatService:
             f"Prior threat level: {prior_threat}\n"
             f"{context_block}"
             f"Current transcript: \"{transcript}\"\n\n"
-            f"Return JSON: threat_level, events (array), is_safe (bool), incident_type, reasons"
+            f"Return JSON: threat_level, events (array), is_safe (bool), incident_type, reasons, guidance, sms_summary"
         )
 
         payload = {
@@ -106,7 +118,7 @@ class AIThreatService:
             ],
             "response_format": {"type": "json_object"},
             "temperature": 0.1,
-            "max_tokens": 256,
+            "max_tokens": 400,
         }
         headers = {
             "Authorization": f"Bearer {settings.GROQ_API_KEY}",
@@ -129,12 +141,18 @@ class AIThreatService:
             call_states=[],
             prior_threat=prior_threat,
         )
+        level = fusion["threat_level"]
+        elevated = level in ("HIGH", "CRITICAL", "MEDIUM")
         return {
-            "threat_level": fusion["threat_level"],
+            "threat_level": level,
             "events": [],
             "is_safe": False,
             "incident_type": "Unknown",
             "reasons": fusion["reasons"] + " [keyword fallback]",
+            # Offline-safe canned guidance/summary (no LLM available)
+            "guidance": "Stay calm and move toward a safe, well-lit place with people. Keep your phone with you."
+                        if elevated else "I'm listening. Tell me what's happening.",
+            "sms_summary": "possible safety threat detected" if elevated else "",
         }
 
 
@@ -157,6 +175,8 @@ def _sanitize(data: dict) -> dict:
     if incident_type not in _VALID_INCIDENTS:
         incident_type = "Unknown"
     reasons = str(data.get("reasons", ""))[:300]
+    guidance = str(data.get("guidance", ""))[:300]
+    sms_summary = str(data.get("sms_summary", ""))[:140]
 
     Logger.info(
         f"AI Threat: {threat_level} | {incident_type} | events={events} "
@@ -168,6 +188,8 @@ def _sanitize(data: dict) -> dict:
         "is_safe": is_safe,
         "incident_type": incident_type,
         "reasons": reasons,
+        "guidance": guidance,
+        "sms_summary": sms_summary,
     }
 
 
@@ -178,6 +200,8 @@ def _empty_result() -> dict:
         "is_safe": False,
         "incident_type": "None",
         "reasons": "No speech detected in this window.",
+        "guidance": "",
+        "sms_summary": "",
     }
 
 
